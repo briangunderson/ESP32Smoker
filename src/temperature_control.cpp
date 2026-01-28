@@ -5,7 +5,8 @@ TemperatureController::TemperatureController(MAX31865* tempSensor,
                                              RelayControl* relayControl)
     : _tempSensor(tempSensor), _relayControl(relayControl), _setpoint(225.0),
       _currentTemp(70.0), _state(STATE_IDLE), _previousState(STATE_IDLE),
-      _stateStartTime(0), _lastUpdate(0), _consecutiveErrors(0) {}
+      _stateStartTime(0), _lastUpdate(0), _consecutiveErrors(0),
+      _debugMode(false), _tempOverrideEnabled(false), _tempOverrideValue(70.0) {}
 
 void TemperatureController::begin() {
   _state = STATE_IDLE;
@@ -24,6 +25,13 @@ void TemperatureController::update() {
     return;
 
   _lastUpdate = now;
+
+  // Skip automatic control if in debug mode
+  if (_debugMode) {
+    // Still read temperature for display
+    readTemperature();
+    return;
+  }
 
   // Read current temperature
   if (!readTemperature()) {
@@ -263,6 +271,13 @@ void TemperatureController::manageIgniter() {
 }
 
 bool TemperatureController::readTemperature() {
+  // Check if temperature override is enabled (debug mode)
+  if (_tempOverrideEnabled) {
+    _currentTemp = _tempOverrideValue;
+    _consecutiveErrors = 0;
+    return true;
+  }
+
   float tempC = _tempSensor->readTemperatureC();
 
   if (tempC < -100) { // Error value from sensor
@@ -324,4 +339,69 @@ void TemperatureController::handleTemperatureError() {
 
 unsigned long TemperatureController::getStateElapsedTime() {
   return millis() - _stateStartTime;
+}
+
+// Debug/Testing Methods
+void TemperatureController::setDebugMode(bool enabled) {
+  _debugMode = enabled;
+
+  if (enabled) {
+    // When entering debug mode, turn off all relays
+    _relayControl->allOff();
+    if (ENABLE_SERIAL_DEBUG) {
+      Serial.println("[TEMP] Debug mode ENABLED - manual control active");
+    }
+  } else {
+    // When exiting debug mode, return to idle state
+    _state = STATE_IDLE;
+    _relayControl->allOff();
+    if (ENABLE_SERIAL_DEBUG) {
+      Serial.println("[TEMP] Debug mode DISABLED - automatic control active");
+    }
+  }
+}
+
+bool TemperatureController::isDebugMode(void) {
+  return _debugMode;
+}
+
+void TemperatureController::setManualRelay(const char* relay, bool state) {
+  if (!_debugMode) {
+    if (ENABLE_SERIAL_DEBUG) {
+      Serial.println("[TEMP] Manual relay control requires debug mode");
+    }
+    return;
+  }
+
+  if (strcmp(relay, "auger") == 0) {
+    _relayControl->setAuger(state ? RELAY_ON : RELAY_OFF);
+    if (ENABLE_SERIAL_DEBUG) {
+      Serial.printf("[TEMP] Manual: Auger %s\n", state ? "ON" : "OFF");
+    }
+  } else if (strcmp(relay, "fan") == 0) {
+    _relayControl->setFan(state ? RELAY_ON : RELAY_OFF);
+    if (ENABLE_SERIAL_DEBUG) {
+      Serial.printf("[TEMP] Manual: Fan %s\n", state ? "ON" : "OFF");
+    }
+  } else if (strcmp(relay, "igniter") == 0) {
+    _relayControl->setIgniter(state ? RELAY_ON : RELAY_OFF);
+    if (ENABLE_SERIAL_DEBUG) {
+      Serial.printf("[TEMP] Manual: Igniter %s\n", state ? "ON" : "OFF");
+    }
+  }
+}
+
+void TemperatureController::setTempOverride(float temp) {
+  _tempOverrideEnabled = true;
+  _tempOverrideValue = temp;
+  if (ENABLE_SERIAL_DEBUG) {
+    Serial.printf("[TEMP] Temperature override set to %.1f°F\n", temp);
+  }
+}
+
+void TemperatureController::clearTempOverride(void) {
+  _tempOverrideEnabled = false;
+  if (ENABLE_SERIAL_DEBUG) {
+    Serial.println("[TEMP] Temperature override cleared");
+  }
 }

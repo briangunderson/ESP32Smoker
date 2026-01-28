@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <ArduinoOTA.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include "config.h"
@@ -8,6 +9,7 @@
 #include "temperature_control.h"
 #include "web_server.h"
 #include "mqtt_client.h"
+#include "tm1638_display.h"
 
 // Global objects
 MAX31865* tempSensor = nullptr;
@@ -15,12 +17,13 @@ RelayControl* relayControl = nullptr;
 TemperatureController* controller = nullptr;
 WebServer* webServer = nullptr;
 MQTTClient* mqttClient = nullptr;
+TM1638Display* display = nullptr;
 
 // Network configuration
-String wifiSSID = "";
-String wifiPassword = "";
-String mqttBroker = "";
-uint16_t mqttPort = 1883;
+String wifiSSID = WIFI_SSID;
+String wifiPassword = WIFI_PASS;
+String mqttBroker = MQTT_BROKER_HOST;
+uint16_t mqttPort = MQTT_BROKER_PORT;
 
 // Timing variables
 unsigned long lastStatusPrint = 0;
@@ -98,6 +101,114 @@ void initializeFileSystem() {
 }
 
 // ============================================================================
+// DISPLAY BUTTON HANDLING
+// ============================================================================
+
+void handleDisplayButtons() {
+  if (!display || !controller) return;
+
+  uint8_t buttons = display->readButtons();
+  if (buttons == 0) return;  // No buttons pressed
+
+  // Debounce - wait a bit between button presses
+  static unsigned long lastButtonPress = 0;
+  if (millis() - lastButtonPress < 300) return;
+  lastButtonPress = millis();
+
+  // Button 1: Start smoking
+  if (display->isButtonPressed(BTN_START)) {
+    Serial.println("[BTN] Start button pressed");
+    controller->start();
+  }
+
+  // Button 2: Stop/Cooldown
+  if (display->isButtonPressed(BTN_STOP)) {
+    Serial.println("[BTN] Stop button pressed");
+    controller->stop();
+  }
+
+  // Button 3: Increase setpoint (+5°F)
+  if (display->isButtonPressed(BTN_TEMP_UP)) {
+    float currentSetpoint = controller->getSetpoint();
+    float newSetpoint = currentSetpoint + 5.0;
+    if (newSetpoint <= TEMP_MAX_SETPOINT) {
+      controller->setSetpoint(newSetpoint);
+      Serial.printf("[BTN] Setpoint increased to %.0f°F\n", newSetpoint);
+    }
+  }
+
+  // Button 4: Decrease setpoint (-5°F)
+  if (display->isButtonPressed(BTN_TEMP_DOWN)) {
+    float currentSetpoint = controller->getSetpoint();
+    float newSetpoint = currentSetpoint - 5.0;
+    if (newSetpoint >= TEMP_MIN_SETPOINT) {
+      controller->setSetpoint(newSetpoint);
+      Serial.printf("[BTN] Setpoint decreased to %.0f°F\n", newSetpoint);
+    }
+  }
+
+  // Button 5: Cycle display mode (reserved for future use)
+  if (display->isButtonPressed(BTN_MODE)) {
+    Serial.println("[BTN] Mode button pressed (not yet implemented)");
+  }
+
+  // Buttons 6-8: Reserved for future use
+  if (display->isButtonPressed(BTN_6)) {
+    Serial.println("[BTN] Button 6 pressed (reserved)");
+  }
+  if (display->isButtonPressed(BTN_7)) {
+    Serial.println("[BTN] Button 7 pressed (reserved)");
+  }
+  if (display->isButtonPressed(BTN_8)) {
+    Serial.println("[BTN] Button 8 pressed (reserved)");
+  }
+}
+
+// ============================================================================
+// OTA FUNCTIONS
+// ============================================================================
+
+void initializeOTA() {
+  // Set OTA hostname
+  ArduinoOTA.setHostname("esp32-smoker");
+
+  // Set OTA password for security
+  ArduinoOTA.setPassword("smoker2026");
+
+  // Configure OTA callbacks
+  ArduinoOTA.onStart([]() {
+    String type = (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem";
+    Serial.printf("\n[OTA] Starting update: %s\n", type.c_str());
+
+    // Stop critical operations during update
+    if (controller) {
+      controller->shutdown();
+    }
+  });
+
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\n[OTA] Update complete!");
+  });
+
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("[OTA] Progress: %u%%\r", (progress / (total / 100)));
+  });
+
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("\n[OTA] Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+
+  ArduinoOTA.begin();
+  Serial.println("[OTA] Over-The-Air updates enabled");
+  Serial.printf("[OTA] Hostname: esp32-smoker, Password: smoker2026\n");
+}
+
+// ============================================================================
 // SETUP
 // ============================================================================
 
@@ -137,8 +248,16 @@ void setup() {
   controller->begin();
   Serial.println("[SETUP] Temperature controller initialized");
 
+  // TM1638 Display
+  display = new TM1638Display();
+  display->begin();
+  Serial.println("[SETUP] TM1638 display initialized");
+
   // Initialize WiFi
   initializeWiFi();
+
+  // Initialize OTA updates
+  initializeOTA();
 
   // Web Server
   webServer = new WebServer(controller, WEB_SERVER_PORT);
@@ -162,6 +281,9 @@ void setup() {
 // ============================================================================
 
 void loop() {
+  // Handle OTA updates
+  ArduinoOTA.handle();
+
   // Update temperature control loop
   controller->update();
 
@@ -170,6 +292,30 @@ void loop() {
 
   // Check WiFi connection
   checkWiFiConnection();
+
+  // Update TM1638 display
+  if (display) {
+    auto status = controller->getStatus();
+
+    // Update temperature displays
+    display->setCurrentTemp(status.currentTemp);
+    display->setTargetTemp(status.setpoint);
+    display->update();
+
+    // Update relay status LEDs
+    display->setRelayLEDs(status.auger, status.fan, status.igniter);
+
+    // Update status LEDs
+    bool wifiConnected = (WiFi.status() == WL_CONNECTED);
+    bool mqttConnected = mqttClient->isConnected();
+    bool isError = (controller->getState() == STATE_ERROR);
+    bool isRunning = (controller->getState() == STATE_RUNNING ||
+                      controller->getState() == STATE_STARTUP);
+    display->setStatusLEDs(wifiConnected, mqttConnected, isError, isRunning);
+
+    // Handle button presses
+    handleDisplayButtons();
+  }
 
   // Status blink LED
   static unsigned long lastBlink = 0;

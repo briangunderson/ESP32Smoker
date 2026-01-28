@@ -58,11 +58,13 @@
 
                 <!-- Temperature Adjustment -->
                 <div class="setpoint-control">
-                    <label for="setpoint-slider">Target Temperature:</label>
-                    <div class="slider-container">
-                        <input type="range" id="setpoint-slider" min="150" max="350" value="225" 
-                               class="slider" oninput="updateSetpoint(this.value)">
-                        <span id="slider-value">225°F</span>
+                    <label for="setpoint-input">Target Temperature:</label>
+                    <div class="setpoint-input-container">
+                        <button class="btn-setpoint-adjust" onclick="decrementSetpoint()">−</button>
+                        <input type="number" id="setpoint-input" min="150" max="350" value="225" step="5">
+                        <button class="btn-setpoint-adjust" onclick="incrementSetpoint()">+</button>
+                        <span class="setpoint-unit">°F</span>
+                        <button class="btn btn-secondary btn-apply-setpoint" onclick="applySetpoint()">Apply</button>
                     </div>
                 </div>
             </section>
@@ -112,6 +114,60 @@
                     <div class="info-item">
                         <span class="info-label">Errors:</span>
                         <span class="info-value" id="error-count">0</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Debug Panel (collapsible) -->
+            <section class="debug-card">
+                <h3 onclick="toggleDebugPanel()" style="cursor: pointer;">
+                    🔧 Debug / Testing
+                    <span id="debug-toggle" style="float: right;">▼</span>
+                </h3>
+                <div id="debug-panel" class="debug-panel" style="display: none;">
+                    <div class="debug-warning">
+                        ⚠️ Warning: Debug mode disables automatic temperature control!
+                    </div>
+
+                    <div class="debug-control-group">
+                        <button id="btn-debug-toggle" class="btn btn-secondary" onclick="toggleDebugMode()">
+                            Enable Debug Mode
+                        </button>
+                    </div>
+
+                    <div id="debug-controls" style="display: none;">
+                        <!-- Manual Relay Control -->
+                        <div class="debug-section">
+                            <h4>Manual Relay Control</h4>
+                            <div class="relay-control-grid">
+                                <div class="relay-control-item">
+                                    <span>Auger:</span>
+                                    <button class="btn-relay" onclick="setRelay('auger', true)">ON</button>
+                                    <button class="btn-relay" onclick="setRelay('auger', false)">OFF</button>
+                                </div>
+                                <div class="relay-control-item">
+                                    <span>Fan:</span>
+                                    <button class="btn-relay" onclick="setRelay('fan', true)">ON</button>
+                                    <button class="btn-relay" onclick="setRelay('fan', false)">OFF</button>
+                                </div>
+                                <div class="relay-control-item">
+                                    <span>Igniter:</span>
+                                    <button class="btn-relay" onclick="setRelay('igniter', true)">ON</button>
+                                    <button class="btn-relay" onclick="setRelay('igniter', false)">OFF</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Temperature Override -->
+                        <div class="debug-section">
+                            <h4>Temperature Override</h4>
+                            <div class="temp-override-control">
+                                <input type="number" id="temp-override-input" min="0" max="600"
+                                       value="225" placeholder="Temperature (°F)">
+                                <button class="btn btn-secondary" onclick="setTempOverride()">Set Override</button>
+                                <button class="btn btn-secondary" onclick="clearTempOverride()">Clear Override</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
