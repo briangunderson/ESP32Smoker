@@ -67,3 +67,6 @@ package-lock.json
 *.swp
 *.swo
 temp/
+
+.claude/
+CLAUDE.md

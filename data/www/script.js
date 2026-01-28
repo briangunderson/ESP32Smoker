@@ -77,9 +77,9 @@ async function updateStatus() {
 }
 
 async function startSmoking() {
-  const temp = parseFloat(document.getElementById('setpoint-slider').value);
+  const temp = parseFloat(document.getElementById('setpoint-input').value);
   const result = await apiCall('/start', 'POST', { temp: temp });
-  
+
   if (result) {
     controllerState.isRunning = true;
     updateButtonStates();
@@ -107,14 +107,35 @@ async function shutdown() {
   }
 }
 
-async function updateSetpoint(value) {
-  const setpoint = parseFloat(value);
-  document.getElementById('slider-value').textContent = `${setpoint}°F`;
-  
+function incrementSetpoint() {
+  const input = document.getElementById('setpoint-input');
+  const current = parseFloat(input.value);
+  const newValue = Math.min(350, current + 5);
+  input.value = newValue;
+}
+
+function decrementSetpoint() {
+  const input = document.getElementById('setpoint-input');
+  const current = parseFloat(input.value);
+  const newValue = Math.max(150, current - 5);
+  input.value = newValue;
+}
+
+async function applySetpoint() {
+  const setpoint = parseFloat(document.getElementById('setpoint-input').value);
+
+  if (setpoint < 150 || setpoint > 350) {
+    alert('Temperature must be between 150°F and 350°F');
+    return;
+  }
+
   const result = await apiCall('/setpoint', 'POST', { temp: setpoint });
-  
+
   if (result) {
     controllerState.setpoint = setpoint;
+    console.log(`Setpoint updated to ${setpoint}°F`);
+  } else {
+    alert('Failed to update setpoint');
   }
 }
 
@@ -142,9 +163,8 @@ function updateUI(status) {
   // Update button states
   updateButtonStates();
   
-  // Update slider position
-  document.getElementById('setpoint-slider').value = status.setpoint;
-  document.getElementById('slider-value').textContent = `${status.setpoint}°F`;
+  // Update setpoint input
+  document.getElementById('setpoint-input').value = status.setpoint;
 }
 
 function updateRelayStatus(elementId, isOn) {
@@ -197,5 +217,112 @@ function updateNetworkStatus() {
 
 // Initialize network status
 updateNetworkStatus();
+
+// ============================================================================
+// DEBUG/TESTING FUNCTIONS
+// ============================================================================
+
+let debugModeActive = false;
+
+function toggleDebugPanel() {
+  const panel = document.getElementById('debug-panel');
+  const toggle = document.getElementById('debug-toggle');
+
+  if (panel.style.display === 'none') {
+    panel.style.display = 'block';
+    toggle.textContent = '▲';
+  } else {
+    panel.style.display = 'none';
+    toggle.textContent = '▼';
+  }
+}
+
+async function toggleDebugMode() {
+  debugModeActive = !debugModeActive;
+
+  const formData = new FormData();
+  formData.append('enabled', debugModeActive.toString());
+
+  try {
+    const response = await fetch(`${API_BASE}/debug/mode`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (response.ok) {
+      const btn = document.getElementById('btn-debug-toggle');
+      const controls = document.getElementById('debug-controls');
+
+      if (debugModeActive) {
+        btn.textContent = 'Disable Debug Mode';
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-danger');
+        controls.style.display = 'block';
+        console.log('Debug mode ENABLED');
+      } else {
+        btn.textContent = 'Enable Debug Mode';
+        btn.classList.remove('btn-danger');
+        btn.classList.add('btn-secondary');
+        controls.style.display = 'none';
+        console.log('Debug mode DISABLED');
+      }
+    }
+  } catch (error) {
+    console.error('Failed to toggle debug mode:', error);
+  }
+}
+
+async function setRelay(relay, state) {
+  const formData = new FormData();
+  formData.append('relay', relay);
+  formData.append('state', state.toString());
+
+  try {
+    const response = await fetch(`${API_BASE}/debug/relay`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (response.ok) {
+      console.log(`Manual relay control: ${relay} = ${state ? 'ON' : 'OFF'}`);
+    }
+  } catch (error) {
+    console.error('Failed to control relay:', error);
+  }
+}
+
+async function setTempOverride() {
+  const temp = document.getElementById('temp-override-input').value;
+
+  const formData = new FormData();
+  formData.append('temp', temp);
+
+  try {
+    const response = await fetch(`${API_BASE}/debug/temp`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (response.ok) {
+      console.log(`Temperature override set to ${temp}°F`);
+    }
+  } catch (error) {
+    console.error('Failed to set temperature override:', error);
+  }
+}
+
+async function clearTempOverride() {
+  try {
+    const response = await fetch(`${API_BASE}/debug/temp`, {
+      method: 'DELETE'
+    });
+
+    if (response.ok) {
+      console.log('Temperature override cleared');
+    }
+  } catch (error) {
+    console.error('Failed to clear temperature override:', error);
+  }
+}
 
 console.log('ESP32 Smoker Controller UI Ready');

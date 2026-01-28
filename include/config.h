@@ -21,14 +21,19 @@
 // Optional: LED Status Indicators
 #define PIN_LED_STATUS    2   // GPIO 2 - Built-in LED
 
+// TM1638 Display Module (7-segment displays, LEDs, buttons)
+#define PIN_TM1638_STB    25  // GPIO 25 - Strobe
+#define PIN_TM1638_CLK    26  // GPIO 26 - Clock
+#define PIN_TM1638_DIO    27  // GPIO 27 - Data I/O
+
 // ============================================================================
 // SENSOR CONFIGURATION
 // ============================================================================
 
 // MAX31865 RTD Configuration
-#define MAX31865_REFERENCE_RESISTANCE 430.0  // 430 ohms for PT100
-#define MAX31865_RTD_RESISTANCE_AT_0  100.0  // PT100 = 100 ohms at 0°C
-#define MAX31865_WIRE_MODE            3      // 3-wire RTD (most common)
+#define MAX31865_REFERENCE_RESISTANCE 4300.0  // 4300 ohms for PT1000
+#define MAX31865_RTD_RESISTANCE_AT_0  1000.0  // PT1000 = 1000 ohms at 0°C
+#define MAX31865_WIRE_MODE            3       // 3-wire RTD (most common)
 
 // Temperature Sensor Calibration
 #define TEMP_SENSOR_OFFSET 0.0  // °F offset calibration
@@ -61,8 +66,8 @@
 // ============================================================================
 
 // Wi-Fi Settings (configure in web interface for production)
-#define WIFI_SSID    ""  // Leave empty to use AP mode or configure via web UI
-#define WIFI_PASS    ""
+#define WIFI_SSID    "YOUR-WIFI-SSID"  // Leave empty to use AP mode or configure via web UI
+#define WIFI_PASS    "YOUR-WIFI-PASSWORD"
 
 // Wi-Fi AP Mode (fallback if no SSID configured)
 #define WIFI_AP_SSID "ESP32Smoker"
@@ -75,9 +80,11 @@
 // MQTT CONFIGURATION
 // ============================================================================
 
-#define MQTT_BROKER_HOST    "192.168.1.100"  // Configure via web UI
+#define MQTT_BROKER_HOST    "192.168.1.11"  // Configure via web UI
 #define MQTT_BROKER_PORT    1883
 #define MQTT_CLIENT_ID      "esp32-smoker"
+#define MQTT_USERNAME       "mqtt"
+#define MQTT_PASSWORD       "YOUR-MQTT-PASSWORD"
 #define MQTT_ROOT_TOPIC     "home/smoker"
 #define MQTT_RECONNECT_INTERVAL 5000  // ms
 

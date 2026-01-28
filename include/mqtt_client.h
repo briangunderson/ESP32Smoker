@@ -2,7 +2,9 @@
 #define MQTT_CLIENT_H
 
 #include <Arduino.h>
+#include <WiFi.h>
 #include <PubSubClient.h>
+#include "config.h"
 #include "temperature_control.h"
 
 class MQTTClient {

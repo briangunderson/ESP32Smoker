@@ -57,9 +57,9 @@ void MQTTClient::update() {
 }
 
 bool MQTTClient::reconnect() {
-  if (_mqttClient.connect(_clientId)) {
+  if (_mqttClient.connect(_clientId, MQTT_USERNAME, MQTT_PASSWORD)) {
     if (ENABLE_SERIAL_DEBUG) {
-      Serial.printf("[MQTT] Connected as %s\n", _clientId);
+      Serial.printf("[MQTT] Connected as %s (authenticated)\n", _clientId);
     }
 
     // Publish birth message

@@ -3,8 +3,8 @@
 ## Project Overview
 This is a complete, production-ready wood pellet smoker controller built on ESP32 with Arduino framework. It features real-time temperature control, web interface, and Home Assistant integration via MQTT.
 
-**Status**: Ready for hardware integration
-**Version**: 1.0.0
+**Status**: Ready for hardware integration with OTA and debug features
+**Version**: 1.1.0
 **Last Build**: January 28, 2026
 
 ## Quick Facts
@@ -102,17 +102,28 @@ Status:
 - WiFi STA mode for configured network
 - AP fallback mode: SSID "ESP32Smoker", password in config
 - Web interface: http://device_ip or http://192.168.4.1 (AP mode)
-- MQTT broker: Configure host/port in config.h
+- MQTT broker: Configure host/port/credentials in config.h
+  - Authentication enabled with username/password
 
 ## REST API Endpoints
 
+### Normal Operation
 - `GET /api/status` - Current temp, setpoint, state, relay status
 - `POST /api/start` - Start smoking (optional: `{"temp": 250}`)
 - `POST /api/stop` - Stop feeding pellets, initiate cooldown
 - `POST /api/shutdown` - Full system shutdown
 - `POST /api/setpoint` - Update target temp: `{"temp": 225}`
 
+### Debug/Testing Endpoints
+- `GET /api/debug/status` - Get debug mode status: `{"debugMode": true/false}`
+- `POST /api/debug/mode` - Enable/disable debug mode: FormData `enabled=true/false`
+- `POST /api/debug/relay` - Manual relay control: FormData `relay=auger/fan/igniter`, `state=true/false`
+- `POST /api/debug/temp` - Set temperature override: FormData `temp=70`
+- `DELETE /api/debug/temp` - Clear temperature override, resume sensor reading
+
 ## MQTT Topics
+
+**Authentication**: Broker connection requires username and password (configured in config.h)
 
 ### Published (sensors)
 - `home/smoker/sensor/temperature` - Current temp
@@ -142,7 +153,9 @@ Edit `config.h`: All `PIN_*` defines at the top
 Edit `config.h`: `WIFI_SSID` and `WIFI_PASS` (or use AP mode)
 
 ### MQTT Broker
-Edit `config.h`: `MQTT_BROKER_HOST` and `MQTT_BROKER_PORT`
+Edit `config.h`:
+- `MQTT_BROKER_HOST` and `MQTT_BROKER_PORT`
+- `MQTT_USERNAME` and `MQTT_PASSWORD` (authentication credentials)
 
 ## Development Workflow
 
@@ -159,6 +172,74 @@ Enable `ENABLE_SERIAL_DEBUG = true` in config.h for verbose logging
 ### File System Upload (if needed)
 ```bash
 pio run --target uploadfs  # Upload data/www/ to SPIFFS/LittleFS
+```
+
+### OTA (Over-The-Air) Updates
+```bash
+# Upload firmware via OTA (no serial cable needed)
+pio run --target upload --upload-port <device_ip>
+
+# Upload filesystem via OTA
+pio run --target uploadfs --upload-port <device_ip>
+```
+
+**OTA Configuration** (platformio.ini):
+- Hostname: `esp32-smoker`
+- Password: `YOUR-OTA-PASSWORD` (configured in upload_flags)
+- During OTA update, system automatically shuts down for safety
+
+## Debug/Testing Features
+
+The web interface includes a collapsible Debug/Testing panel with tools for hardware testing and troubleshooting.
+
+### Debug Mode
+**IMPORTANT**: When debug mode is enabled:
+- Automatic temperature control is **disabled**
+- State machine stops processing
+- All relays are automatically turned off when entering debug mode
+- You have full manual control of all relays and temperature reading
+
+### Manual Relay Control
+Control individual relays directly from the web interface or API:
+- **Auger**: Turn on/off (safety interlock still enforced - requires fan running)
+- **Fan**: Turn on/off
+- **Igniter**: Turn on/off
+
+Safety interlocks remain active even in debug mode to prevent unsafe operations.
+
+### Temperature Override
+Override the actual sensor reading with a test value:
+- Set any temperature value (e.g., 70°F for testing cold start, 225°F for testing running mode)
+- Useful for testing control logic without physical temperature changes
+- Clear override to resume reading from actual MAX31865 sensor
+
+### Using Debug Features
+1. Open web interface at http://device_ip
+2. Click on "🔧 Debug / Testing" to expand the panel
+3. Click "Enable Debug Mode" button
+4. Use the relay control buttons to manually test hardware
+5. Enter a temperature value and click "Set Override" to test with simulated temperature
+6. Click "Disable Debug Mode" when done testing to resume automatic control
+
+**Command Line Testing**:
+```bash
+# Enable debug mode
+curl -X POST -F "enabled=true" http://device_ip/api/debug/mode
+
+# Set temperature override to 70°F
+curl -X POST -F "temp=70" http://device_ip/api/debug/temp
+
+# Turn on fan manually
+curl -X POST -F "relay=fan" -F "state=true" http://device_ip/api/debug/relay
+
+# Turn on auger (fan must be running first due to safety interlock)
+curl -X POST -F "relay=auger" -F "state=true" http://device_ip/api/debug/relay
+
+# Clear temperature override
+curl -X DELETE http://device_ip/api/debug/temp
+
+# Disable debug mode
+curl -X POST -F "enabled=false" http://device_ip/api/debug/mode
 ```
 
 ## Important Notes
@@ -187,14 +268,26 @@ MAX31865 is read every 100ms via SPI in `max31865.cpp`:
 Frontend polls `/api/status` every 2 seconds (see `script.js`)
 - To change update rate: modify `setInterval(updateStatus, 2000)` in script.js
 
+### MQTT Authentication
+MQTT broker connection uses username/password authentication:
+- Credentials configured in `config.h`: `MQTT_USERNAME` and `MQTT_PASSWORD`
+- Connection is authenticated in `mqtt_client.cpp` reconnect() method
+- Make sure your MQTT broker has these credentials configured
+
 ## Known Limitations / Future Enhancements
 
+### Implemented Features
+- ✅ OTA (Over-The-Air) firmware and filesystem updates
+- ✅ Debug mode with manual relay control
+- ✅ Temperature override for testing
+- ✅ MQTT authentication
+- ✅ LittleFS filesystem for web interface
+
 ### Not Yet Implemented
-- Persistent configuration storage (SPIFFS/LittleFS)
+- Persistent configuration storage (settings reset on reboot)
 - Temperature history logging
 - PID control algorithm (currently hysteresis only)
 - Multiple temperature probes
-- OTA (Over-The-Air) firmware updates
 - Data charts/graphs in web UI
 
 ### Current Behavior
@@ -208,14 +301,16 @@ Frontend polls `/api/status` every 2 seconds (see `script.js`)
 Before deploying to actual hardware:
 1. [ ] Verify all GPIO pin assignments match your hardware
 2. [ ] Test sensor reading with actual MAX31865 + PT100 probe
-3. [ ] Test each relay individually
-4. [ ] Verify auger interlock (auger should fail without fan)
-5. [ ] Test startup sequence with serial monitor
-6. [ ] Test temperature control in safe environment
-7. [ ] Test web interface from multiple devices
-8. [ ] Test MQTT integration with Home Assistant
-9. [ ] Test emergency stop scenarios
-10. [ ] Verify thermal limits trigger correctly
+3. [ ] Test each relay individually using debug mode
+4. [ ] Verify auger interlock (auger should fail without fan even in debug mode)
+5. [ ] Test debug mode: enable, control relays, override temperature, disable
+6. [ ] Test OTA firmware update (verify system shuts down safely during update)
+7. [ ] Test startup sequence with serial monitor
+8. [ ] Test temperature control in safe environment
+9. [ ] Test web interface from multiple devices
+10. [ ] Test MQTT integration with Home Assistant
+11. [ ] Test emergency stop scenarios
+12. [ ] Verify thermal limits trigger correctly
 
 ## Troubleshooting Quick Reference
 
@@ -236,8 +331,10 @@ Before deploying to actual hardware:
 
 ### MQTT Not Connecting
 - Verify broker IP/port in config.h
+- Verify username/password in config.h match broker settings
 - Check network connectivity (ping broker from ESP32's network)
-- Check broker logs for connection errors
+- Check broker logs for authentication errors (error code 5 = auth failed)
+- Serial monitor shows connection error codes: rc=-4 (timeout), rc=5 (auth failed)
 
 ## Project Context for AI Assistants
 

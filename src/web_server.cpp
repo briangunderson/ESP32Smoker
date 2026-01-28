@@ -107,6 +107,64 @@ void WebServer::setupRoutes() {
                }
              });
 
+  // Debug API: Enable/disable debug mode
+  _server.on("/api/debug/mode", HTTP_POST,
+             [this](AsyncWebServerRequest* request) {
+               if (request->hasParam("enabled", true)) {
+                 bool enabled = request->getParam("enabled", true)->value() == "true";
+                 _controller->setDebugMode(enabled);
+                 request->send(200, "application/json", "{\"ok\":true}");
+               } else {
+                 request->send(400, "application/json",
+                               "{\"error\":\"Missing enabled parameter\"}");
+               }
+             });
+
+  // Debug API: Get debug mode status
+  _server.on("/api/debug/status", HTTP_GET,
+             [this](AsyncWebServerRequest* request) {
+               StaticJsonDocument<128> doc;
+               doc["debugMode"] = _controller->isDebugMode();
+               String response;
+               serializeJson(doc, response);
+               request->send(200, "application/json", response);
+             });
+
+  // Debug API: Manual relay control
+  _server.on("/api/debug/relay", HTTP_POST,
+             [this](AsyncWebServerRequest* request) {
+               if (request->hasParam("relay", true) &&
+                   request->hasParam("state", true)) {
+                 String relay = request->getParam("relay", true)->value();
+                 bool state = request->getParam("state", true)->value() == "true";
+                 _controller->setManualRelay(relay.c_str(), state);
+                 request->send(200, "application/json", "{\"ok\":true}");
+               } else {
+                 request->send(400, "application/json",
+                               "{\"error\":\"Missing relay or state parameter\"}");
+               }
+             });
+
+  // Debug API: Set temperature override
+  _server.on("/api/debug/temp", HTTP_POST,
+             [this](AsyncWebServerRequest* request) {
+               if (request->hasParam("temp", true)) {
+                 float temp = request->getParam("temp", true)->value().toFloat();
+                 _controller->setTempOverride(temp);
+                 request->send(200, "application/json", "{\"ok\":true}");
+               } else {
+                 request->send(400, "application/json",
+                               "{\"error\":\"Missing temp parameter\"}");
+               }
+             });
+
+  // Debug API: Clear temperature override
+  _server.on("/api/debug/temp", HTTP_DELETE,
+             [this](AsyncWebServerRequest* request) {
+               _controller->clearTempOverride();
+               request->send(200, "application/json", "{\"ok\":true}");
+             });
+
   // 404 handler
   _server.onNotFound([](AsyncWebServerRequest* request) {
     request->send(404, "application/json", "{\"error\":\"Not found\"}");

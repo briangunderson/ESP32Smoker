@@ -38,7 +38,14 @@ public:
   float getSetpoint(void);
   ControllerState getState(void);
   const char* getStateName(void);
-  
+
+  // Debug/Testing methods
+  void setDebugMode(bool enabled);
+  bool isDebugMode(void);
+  void setManualRelay(const char* relay, bool state);
+  void setTempOverride(float temp);
+  void clearTempOverride(void);
+
   // Status structure
   struct Status {
     float currentTemp;
@@ -63,6 +70,11 @@ private:
   uint32_t _stateStartTime;
   uint32_t _lastUpdate;
   uint8_t _consecutiveErrors;
+
+  // Debug mode
+  bool _debugMode;
+  bool _tempOverrideEnabled;
+  float _tempOverrideValue;
 
   // State machine handlers
   void handleIdleState();
