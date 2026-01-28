@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Smoker Controller</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🔥 Wood Pellet Smoker</h1>
+            <div class="status-indicator">
+                <span id="wifi-status" class="status-icon">●</span>
+                <span id="mqtt-status" class="status-icon">●</span>
+                <span id="sensor-status" class="status-icon">●</span>
+            </div>
+        </header>
+
+        <!-- Main Control Panel -->
+        <main class="main-content">
+            <!-- Temperature Display -->
+            <section class="temperature-card">
+                <div class="temperature-display">
+                    <div class="current-temp">
+                        <span class="value" id="current-temp">--</span>
+                        <span class="unit">°F</span>
+                    </div>
+                    <div class="temp-label">Current Temperature</div>
+                </div>
+
+                <div class="setpoint-display">
+                    <div class="setpoint-temp">
+                        <span class="value" id="setpoint-temp">225</span>
+                        <span class="unit">°F</span>
+                    </div>
+                    <div class="temp-label">Target Temperature</div>
+                </div>
+            </section>
+
+            <!-- Control Buttons -->
+            <section class="control-section">
+                <div class="control-group">
+                    <button id="btn-start" class="btn btn-primary" onclick="startSmoking()">
+                        <span class="btn-icon">▶</span>
+                        <span class="btn-text">Start</span>
+                    </button>
+                    <button id="btn-stop" class="btn btn-secondary" onclick="stopSmoking()" disabled>
+                        <span class="btn-icon">⏹</span>
+                        <span class="btn-text">Stop</span>
+                    </button>
+                    <button id="btn-shutdown" class="btn btn-danger" onclick="shutdown()">
+                        <span class="btn-icon">⏻</span>
+                        <span class="btn-text">Shutdown</span>
+                    </button>
+                </div>
+
+                <!-- Temperature Adjustment -->
+                <div class="setpoint-control">
+                    <label for="setpoint-slider">Target Temperature:</label>
+                    <div class="slider-container">
+                        <input type="range" id="setpoint-slider" min="150" max="350" value="225" 
+                               class="slider" oninput="updateSetpoint(this.value)">
+                        <span id="slider-value">225°F</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- State Display -->
+            <section class="state-card">
+                <h3>System State</h3>
+                <div class="state-display" id="state-display">Idle</div>
+                <div class="runtime" id="runtime">Runtime: 0m 0s</div>
+            </section>
+
+            <!-- Relay Status -->
+            <section class="relay-card">
+                <h3>Relay Status</h3>
+                <div class="relay-grid">
+                    <div class="relay-item">
+                        <div class="relay-name">Auger</div>
+                        <div class="relay-status" id="relay-auger">OFF</div>
+                    </div>
+                    <div class="relay-item">
+                        <div class="relay-name">Fan</div>
+                        <div class="relay-status" id="relay-fan">OFF</div>
+                    </div>
+                    <div class="relay-item">
+                        <div class="relay-name">Igniter</div>
+                        <div class="relay-status" id="relay-igniter">OFF</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- System Info -->
+            <section class="info-card">
+                <h3>System Information</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">WiFi Status:</span>
+                        <span class="info-value" id="wifi-info">Connecting...</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">MQTT Status:</span>
+                        <span class="info-value" id="mqtt-info">Offline</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Uptime:</span>
+                        <span class="info-value" id="uptime">0h 0m</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Errors:</span>
+                        <span class="info-value" id="error-count">0</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>ESP32 Smoker Controller • Version 1.0.0</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
