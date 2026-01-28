@@ -1,0 +1,69 @@
+# .gitignore for ESP32 Smoker Controller
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/.clangd
+.clangd/
+
+# Build directories
+build/
+dist/
+*.o
+*.a
+*.lib
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.env
+.venv
+env/
+venv/
+
+# Secrets and local config
+config.local.json
+wifi_credentials.json
+mqtt_config.json
+secrets.h
+local.h
+
+# Serial monitoring
+*.log
+
+# OS files
+Thumbs.db
+.directory
+
+# Firmware binaries
+*.bin
+*.elf
+*.elf.map
+
+# Documentation build artifacts
+docs/_build/
+docs/.doctrees/
+
+# Node modules (if using Node.js tools)
+node_modules/
+package-lock.json
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+temp/
