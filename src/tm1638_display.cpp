@@ -8,14 +8,30 @@ TM1638Display::TM1638Display()
       _ledState(0) {}
 
 void TM1638Display::begin() {
+  if (ENABLE_SERIAL_DEBUG) {
+    Serial.println("[TM1638] Initializing display...");
+    Serial.printf("[TM1638] Pins - DIO:%d, CLK:%d, STB:%d\n",
+                  PIN_TM1638_DIO, PIN_TM1638_CLK, PIN_TM1638_STB);
+  }
+
   // Initialize TM1638 with DIO, CLK, STB pins
-  _display = new TM1638(PIN_TM1638_DIO, PIN_TM1638_CLK, PIN_TM1638_STB);
+  // Constructor: TM1638(dataPin, clockPin, strobePin, activateDisplay, intensity)
+  _display = new TM1638(PIN_TM1638_DIO, PIN_TM1638_CLK, PIN_TM1638_STB, true, 7);
+
+  if (ENABLE_SERIAL_DEBUG) {
+    Serial.println("[TM1638] Display object created");
+  }
+
+  // Show startup test pattern
+  _display->setDisplayToString("88888888");  // All segments on
+  _display->setLEDs(0xFFFF);  // All LEDs on
+  delay(500);
 
   // Clear display and LEDs
   clear();
 
   if (ENABLE_SERIAL_DEBUG) {
-    Serial.println("[TM1638] Display initialized");
+    Serial.println("[TM1638] Display initialized and ready");
   }
 }
 
@@ -33,6 +49,14 @@ void TM1638Display::update() {
   // Combine into 8-character string for display
   char displayBuffer[9];
   snprintf(displayBuffer, 9, "%s%s", leftBuffer, rightBuffer);
+
+  // Debug output (occasional)
+  static unsigned long lastDebug = 0;
+  if (ENABLE_SERIAL_DEBUG && (millis() - lastDebug > 5000)) {
+    lastDebug = millis();
+    Serial.printf("[TM1638] Display: '%s' (Cur:%.1f Tgt:%.1f)\n",
+                  displayBuffer, _currentTemp, _targetTemp);
+  }
 
   // Display the string
   _display->setDisplayToString(displayBuffer);
@@ -55,6 +79,12 @@ void TM1638Display::setTargetTemp(float temp) {
 }
 
 void TM1638Display::formatTemperature(float temp, char* buffer) {
+  // Check for invalid temperatures
+  if (isnan(temp) || isinf(temp)) {
+    snprintf(buffer, 5, "----");
+    return;
+  }
+
   // Format temperature to 4 characters
   if (temp >= 1000.0) {
     // Display as integer for 4 digits (e.g., "1107")

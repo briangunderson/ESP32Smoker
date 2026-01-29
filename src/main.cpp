@@ -118,7 +118,7 @@ void handleDisplayButtons() {
   // Button 1: Start smoking
   if (display->isButtonPressed(BTN_START)) {
     Serial.println("[BTN] Start button pressed");
-    controller->start();
+    controller->startSmoking(controller->getSetpoint());
   }
 
   // Button 2: Stop/Cooldown

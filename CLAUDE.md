@@ -10,7 +10,8 @@ This is a complete, production-ready wood pellet smoker controller built on ESP3
 ## Quick Facts
 - **Platform**: ESP32 (PlatformIO + Arduino Framework)
 - **Language**: C++ for firmware, HTML/CSS/JS for web interface
-- **Temperature Sensor**: MAX31865 RTD (PT100 probe via SPI)
+- **Temperature Sensor**: MAX31865 RTD (PT1000 probe via SPI)
+- **Display**: TM1638 (dual 7-segment displays, 8 buttons, 8 LEDs)
 - **Control**: 3 relays (auger, fan, igniter) with safety interlocks
 - **Connectivity**: WiFi (STA/AP modes) + Web API + MQTT
 - **Lines of Code**: ~4000 total (~1200 firmware, ~950 web UI, ~1500 docs)
@@ -27,6 +28,7 @@ This is a complete, production-ready wood pellet smoker controller built on ESP3
 - `relay_control.cpp` - GPIO relay control with safety interlocks
 - `web_server.cpp` - Async HTTP server + REST API
 - `mqtt_client.cpp` - Home Assistant integration
+- `tm1638_display.cpp` - Physical display and button interface
 
 ### Web Interface (data/www/)
 - `index.html` - Responsive dashboard
@@ -81,11 +83,53 @@ Relays:
   Fan     = GPIO 13
   Igniter = GPIO 14
 
+TM1638 Display:
+  STB  = GPIO 25 (Strobe)
+  CLK  = GPIO 26 (Clock)
+  DIO  = GPIO 27 (Data I/O)
+
 Status:
-  LED = GPIO 2
+  LED = GPIO 2 (Built-in)
 ```
 
+## TM1638 Display & Physical Controls
+
+### Display Features
+The TM1638 module provides a physical interface with:
+- **Dual 7-segment displays**: Show current temperature (left) and setpoint (right)
+- **8 Status LEDs**: Visual indicators for system status
+- **8 Push buttons**: Physical control without web interface
+
+### LED Indicators (Left to Right)
+1. **Auger** - Pellet auger motor is running
+2. **Fan** - Combustion fan is running
+3. **Igniter** - Hot rod igniter is active
+4. **WiFi** - Connected to WiFi network
+5. **MQTT** - Connected to MQTT broker
+6. **Error** - System error or fault condition
+7. **Running** - Smoking in progress (RUNNING state)
+8. **Reserved** - Available for future use
+
+### Button Controls (Left to Right)
+1. **Start** - Begin smoking sequence (starts at current setpoint)
+2. **Stop** - Stop feeding pellets, initiate cooldown
+3. **Temp Up** - Increase setpoint by 5°F (max 350°F)
+4. **Temp Down** - Decrease setpoint by 5°F (min 150°F)
+5. **Mode** - Reserved for future use (cycles display modes)
+6-8. **Reserved** - Available for future features
+
+### Button Behavior
+- Buttons have 300ms debounce to prevent accidental double-presses
+- Temperature changes are immediate and reflected on display
+- Buttons work in parallel with web interface (both control same system)
+- Button presses are logged to serial output for debugging
+
 ## Key Configuration Parameters
+
+### Sensor Configuration (config.h)
+- `MAX31865_RTD_RESISTANCE_AT_0`: 1000.0 (PT1000 = 1000Ω at 0°C)
+- `MAX31865_REFERENCE_RESISTANCE`: 4300.0 (4.3kΩ reference resistor for PT1000)
+- `MAX31865_WIRE_MODE`: 3 (3-wire RTD, most common configuration)
 
 ### Temperature Control (config.h)
 - `TEMP_MIN_SETPOINT`: 150°F (minimum allowed)
@@ -261,7 +305,8 @@ In `relay_control.cpp`:
 ### Sensor Reading
 MAX31865 is read every 100ms via SPI in `max31865.cpp`:
 - Uses Callendar-Van Dusen equation for accurate RTD conversion
-- Supports 2-wire, 3-wire, or 4-wire RTD configurations
+- Configured for PT1000 sensor (1000Ω at 0°C) with 4.3kΩ reference resistor
+- Supports 2-wire, 3-wire, or 4-wire RTD configurations (default: 3-wire)
 - Fault detection for open circuit, short circuit, etc.
 
 ### Web Interface Updates
@@ -300,24 +345,37 @@ MQTT broker connection uses username/password authentication:
 
 Before deploying to actual hardware:
 1. [ ] Verify all GPIO pin assignments match your hardware
-2. [ ] Test sensor reading with actual MAX31865 + PT100 probe
-3. [ ] Test each relay individually using debug mode
-4. [ ] Verify auger interlock (auger should fail without fan even in debug mode)
-5. [ ] Test debug mode: enable, control relays, override temperature, disable
-6. [ ] Test OTA firmware update (verify system shuts down safely during update)
-7. [ ] Test startup sequence with serial monitor
-8. [ ] Test temperature control in safe environment
-9. [ ] Test web interface from multiple devices
-10. [ ] Test MQTT integration with Home Assistant
-11. [ ] Test emergency stop scenarios
-12. [ ] Verify thermal limits trigger correctly
+2. [ ] Test sensor reading with actual MAX31865 + PT1000 probe
+3. [ ] Verify TM1638 display shows temperature correctly
+4. [ ] Test all 8 buttons on TM1638 module
+5. [ ] Verify all 8 LEDs on TM1638 indicate correct status
+6. [ ] Test each relay individually using debug mode
+7. [ ] Verify auger interlock (auger should fail without fan even in debug mode)
+8. [ ] Test debug mode: enable, control relays, override temperature, disable
+9. [ ] Test OTA firmware update (verify system shuts down safely during update)
+10. [ ] Test startup sequence with serial monitor
+11. [ ] Test temperature control in safe environment
+12. [ ] Test web interface from multiple devices
+13. [ ] Test MQTT integration with Home Assistant
+14. [ ] Test emergency stop scenarios
+15. [ ] Verify thermal limits trigger correctly
+16. [ ] Test physical buttons work in parallel with web interface
 
 ## Troubleshooting Quick Reference
 
 ### No Temperature Reading
 - Check MAX31865 SPI wiring (CLK, MOSI, MISO, CS)
-- Verify PT100 probe connections
+- Verify PT1000 probe connections (3-wire: RTD+, RTD-, RTDIN+)
+- Ensure reference resistor matches config (4.3kΩ for PT1000)
 - Check serial debug output for fault codes
+
+### Display Not Working
+- Verify TM1638 wiring (STB=GPIO25, CLK=GPIO26, DIO=GPIO27)
+- Check power supply to TM1638 module (5V recommended)
+- Monitor serial output for button press confirmations
+- Look for test pattern on boot: "88888888" should flash for 0.5 seconds
+- Check serial for: `[TM1638] Display initialized and ready`
+- If compilation fails on TM16XX.cpp, the library patch may need reapplying
 
 ### Relays Not Switching
 - Verify GPIO pins in config.h match your hardware
@@ -336,9 +394,50 @@ Before deploying to actual hardware:
 - Check broker logs for authentication errors (error code 5 = auth failed)
 - Serial monitor shows connection error codes: rc=-4 (timeout), rc=5 (auth failed)
 
+## Library Dependencies
+
+The project uses the following libraries (managed via PlatformIO):
+- **ArduinoJson** (^6.20.0) - JSON parsing for configuration and API
+- **ESPAsyncWebServer** (GitHub) - Asynchronous web server
+- **AsyncTCP** (GitHub) - TCP library for async web server
+- **PubSubClient** (^2.8) - MQTT client library
+- **TM1638** (GitHub: rjbatista/tm1638-library) - Display and button interface
+
+All dependencies are automatically installed by PlatformIO on first build.
+
+## Recent Changes & Fixes
+
+### January 29, 2026 - TM1638 Display Troubleshooting
+**Issue**: TM1638 display showing only power LED, no segments or status LEDs
+
+**Root Cause**: Library compilation issue and missing diagnostics
+
+**Fixes Applied**:
+1. **TM16XX Library Patch** - Fixed `min()` function type mismatch in [.pio/libdeps/esp32dev/tm1638-library/TM16XX.cpp](src/tm1638_display.cpp)
+   - Changed `min(7, intensity)` to `min((byte)7, intensity)` to resolve C++ template deduction error
+
+2. **Enhanced TM1638 Initialization** ([tm1638_display.cpp](src/tm1638_display.cpp))
+   - Added diagnostic serial output showing pin assignments
+   - Added 500ms startup test pattern ("88888888" + all LEDs)
+   - Added explicit intensity parameter (7 = maximum brightness)
+
+3. **Invalid Temperature Handling** ([tm1638_display.cpp:58-62](src/tm1638_display.cpp#L58-L62))
+   - Added NaN/infinity checks in `formatTemperature()`
+   - Invalid temps now display as "----" instead of garbage
+
+4. **Display Update Logging** ([tm1638_display.cpp:38-43](src/tm1638_display.cpp#L38-L43))
+   - Added periodic debug output showing what's being displayed
+   - Helps verify data is being sent to display
+
+5. **Button Handler Fix** ([main.cpp:121](src/main.cpp#L121))
+   - Changed `controller->start()` to `controller->startSmoking(controller->getSetpoint())`
+   - Fixed compilation error due to method name mismatch
+
+**Verification**: Display now shows current temp (left) and setpoint (right), status LEDs work, buttons functional
+
 ## Project Context for AI Assistants
 
-This project was built in a single session on January 28, 2026. The codebase is well-structured with:
+This project was initially built on January 28, 2026, with hardware enhancements added on January 29, 2026. The codebase is well-structured with:
 - Clear separation of concerns (each module in its own file)
 - Comprehensive documentation at multiple levels
 - Safety-first design with interlocks and fault handling

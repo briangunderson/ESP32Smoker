@@ -26,7 +26,13 @@ A modern, fully-featured wood pellet smoker controller built on ESP32 with WiFi,
 - **MAX31865 RTD-to-Digital Converter**
   - SPI interface
   - 3-wire, 2-wire, or 4-wire RTD support
-  - PT100 RTD probe (100Ω at 0°C)
+  - PT1000 RTD probe (1000Ω at 0°C)
+
+### Display & Controls
+- **TM1638 LED & Button Module**
+  - Dual 7-segment displays (current temp + setpoint)
+  - 8 status LEDs (auger, fan, igniter, WiFi, MQTT, error, running)
+  - 8 push buttons (start, stop, temp up/down, mode selection)
 
 ### Control Hardware
 - **3-Relay Module** (5V or 12V)
@@ -53,14 +59,18 @@ ESP32                          MAX31865          Relays
 │ GPIO 13 ─────────────────────────────────────► Relay 2 (Fan)
 │ GPIO 14 ─────────────────────────────────────► Relay 3 (Igniter)
 │                                                          │
+│ GPIO 25 ─────────────────────────────────────► TM1638 STB
+│ GPIO 26 ─────────────────────────────────────► TM1638 CLK
+│ GPIO 27 ─────────────────────────────────────► TM1638 DIO
+│                                                          │
 │ GPIO 2 ──────────────────────────────────────► LED Status
 │                                                          │
 └─────────────────────────────────────────────────────────┘
 
-MAX31865 to RTD Probe (3-wire example):
-  RTD+ (Pin 5) ─────► PT100 Probe A
-  RTD- (Pin 6) ─────► PT100 Probe B
-  RTDIN+ (Pin 1) ───► PT100 Probe B
+MAX31865 to RTD Probe (3-wire PT1000 example):
+  RTD+ (Pin 5) ─────► PT1000 Probe A
+  RTD- (Pin 6) ─────► PT1000 Probe B
+  RTDIN+ (Pin 1) ───► PT1000 Probe B
   RTDIN- (Pin 2) ───► GND
 ```
 
@@ -141,6 +151,30 @@ Key parameters to adjust:
    - **Green dots**: Connected systems (WiFi, MQTT, Sensor)
    - **Relay Status**: Shows auger, fan, igniter state
    - **System State**: Current operation mode
+
+### Physical Controls (TM1638 Display)
+
+The TM1638 module provides standalone control without requiring the web interface:
+
+1. **Display**
+   - **Left Display**: Current temperature in °F
+   - **Right Display**: Target setpoint in °F
+
+2. **Status LEDs** (left to right)
+   - LED 1: Auger running
+   - LED 2: Fan running
+   - LED 3: Igniter active
+   - LED 4: WiFi connected
+   - LED 5: MQTT connected
+   - LED 6: Error state
+   - LED 7: Running/Smoking
+
+3. **Button Controls** (left to right)
+   - Button 1: **Start** - Begin smoking
+   - Button 2: **Stop** - Stop and cooldown
+   - Button 3: **Temp Up** - Increase setpoint by 5°F
+   - Button 4: **Temp Down** - Decrease setpoint by 5°F
+   - Button 5: **Mode** - Reserved for future use
 
 ### API Endpoints
 

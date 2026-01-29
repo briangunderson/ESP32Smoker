@@ -7,10 +7,10 @@ The ESP32 Smoker Controller is built on a modular architecture with clear separa
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                   User Interfaces                            │
-├──────────────────────┬──────────────────┬──────────────────┤
-│   Web Browser        │   Home Assistant │  Mobile App       │
-│   (HTTP/WebSocket)   │   (MQTT)         │  (Future)         │
-└──────────────────────┴──────────────────┴──────────────────┘
+├────────────────┬──────────────────┬──────────────┬─────────┤
+│  TM1638 Display │   Web Browser   │ Home Assistant│ Mobile  │
+│  & Buttons      │  (HTTP/WebSocket)│   (MQTT)     │(Future) │
+└────────────────┴──────────────────┴──────────────┴─────────┘
                           │
                           │ Network
                           ▼
@@ -36,10 +36,10 @@ The ESP32 Smoker Controller is built on a modular architecture with clear separa
 │  ┌──────┴──────────────────────────────────────────┐       │
 │  │      Hardware Abstraction Layer                 │       │
 │  ├─────────────────────────────────────────────────┤       │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │       │
-│  │  │   RTD    │  │  Relays  │  │ LittleFS     │  │       │
-│  │  │ (MAX31865)  │ (GPIO)   │  │(Configuration)  │       │
-│  │  └──────────┘  └──────────┘  └──────────────┘  │       │
+│  │  ┌──────────┐ ┌──────────┐ ┌────────┐ ┌──────┐│       │
+│  │  │   RTD    │ │  Relays  │ │TM1638  │ │LittleFS│       │
+│  │  │(MAX31865)│ │ (GPIO)   │ │Display │ │(Config)│       │
+│  │  └──────────┘ └──────────┘ └────────┘ └──────┘│       │
 │  └─────────────────────────────────────────────────┘       │
 │                          │                                    │
 │         ┌────────────────┼────────────────┐                  │
@@ -57,8 +57,9 @@ The ESP32 Smoker Controller is built on a modular architecture with clear separa
                          ┌──────────────────┐
                          │  Physical Hardware   │
                          ├──────────────────┤
-                         │ MAX31865 + RTD   │
+                         │ MAX31865 + PT1000│
                          │ Relay Module     │
+                         │ TM1638 Display   │
                          │ WiFi Antenna     │
                          └──────────────────┘
 ```
@@ -139,7 +140,23 @@ Network communication for Home Assistant integration.
 - `home/smoker/command/stop` - Stop session
 - `home/smoker/command/setpoint` - Update target
 
-### 6. **Configuration** (`config.h`)
+### 6. **TM1638 Display** (`tm1638_display.*`)
+Physical user interface with dual 7-segment displays, LEDs, and buttons.
+
+**Responsibilities:**
+- Display current temperature and setpoint
+- Status LEDs for system states (auger, fan, igniter, WiFi, MQTT, error, running)
+- Button input handling with debouncing
+- Standalone control without network connectivity
+
+**Button Functions:**
+- Button 1: **Start** - Begin smoking
+- Button 2: **Stop** - Stop and cooldown
+- Button 3: **Temp Up** - Increase setpoint by 5°F
+- Button 4: **Temp Down** - Decrease setpoint by 5°F
+- Button 5: **Mode** - Reserved for future use
+
+### 7. **Configuration** (`config.h`)
 Centralized configuration and pin definitions.
 
 **Configurable Items:**

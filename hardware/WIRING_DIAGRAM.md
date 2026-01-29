@@ -38,6 +38,20 @@ GPIO 2    → Status LED (+ through 330Ω resistor)
 GND       → LED (-)
 ```
 
+### TM1638 Display Module
+
+```
+ESP32 Pin → Signal → TM1638 Pin
+──────────────────────────────────
+GPIO 25   → STB    → STB (Strobe)
+GPIO 26   → CLK    → CLK (Clock)
+GPIO 27   → DIO    → DIO (Data I/O)
+GND       → GND    → GND
+5V        → VCC    → VCC
+```
+
+**Note**: TM1638 module operates at 5V logic levels but is tolerant of 3.3V ESP32 outputs. The DIO line is bidirectional and uses open-drain configuration.
+
 ## Complete Schematic
 
 ### Power Distribution
@@ -97,7 +111,7 @@ GPIO 5 │ CS ─┐   │    │  │    │
               │    └──────────┐
               │               │
          ┌────▼───┐      ┌────▼───┐
-         │   PT100 │      │  PT100  │
+         │  PT1000 │      │ PT1000  │
          │  Probe 1│      │ Probe 2 │
          │  (Food) │      │ (Dome)  │
          └─────────┘      └─────────┘
@@ -202,11 +216,14 @@ PT100 Probe (4-wire variant)
 ## Temperature Probes
 
 ### Recommended Specifications
-- **Type**: PT100 RTD (100Ω at 0°C)
+- **Type**: PT1000 RTD (1000Ω at 0°C)
+- **Reference Resistor**: 4.3kΩ (for MAX31865 with PT1000)
 - **Accuracy**: Class B (±0.3°C ± 0.005|t|)
 - **Response Time**: < 5 seconds
 - **Cable Length**: 5-10 meters typical
 - **Insulation**: Stainless steel or ceramic sheath
+
+**Note**: The system is configured for PT1000 sensors. If using PT100 (100Ω), update `MAX31865_RTD_RESISTANCE_AT_0` and `MAX31865_REFERENCE_RESISTANCE` in [config.h](../include/config.h).
 
 ### Multi-Probe Setup (Optional)
 
