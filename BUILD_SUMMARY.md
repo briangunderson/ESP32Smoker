@@ -134,14 +134,16 @@ ESP32Smoker/
 |-----------|---------|
 | **Microcontroller** | ESP32 DevKit (240MHz dual-core) |
 | **Temperature Sensor** | MAX31865 RTD-to-SPI converter |
-| **RTD Probe** | PT100 (100Ω at 0°C) |
+| **RTD Probe** | PT1000 (1000Ω at 0°C) |
+| **Display** | TM1638 (dual 7-segment, 8 LEDs, 8 buttons) |
 | **Relays** | 3x SPDT relay module (5V or 12V) |
 | **Connectivity** | WiFi 802.11 b/g/n (2.4 GHz) |
-| **Control Interface** | Web dashboard + MQTT |
+| **Control Interface** | Web dashboard + MQTT + Physical buttons |
 
 **Pin Assignments:**
 - SPI: GPIO 18 (CLK), 23 (MOSI), 19 (MISO), 5 (CS)
 - Relays: GPIO 12 (Auger), 13 (Fan), 14 (Igniter)
+- TM1638: GPIO 25 (STB), 26 (CLK), 27 (DIO)
 - Status LED: GPIO 2
 
 ---
@@ -209,7 +211,7 @@ ESP32Smoker/
 | Metric | Value | Note |
 |--------|-------|------|
 | **Update Rate** | 2000ms | Configurable |
-| **RTD Accuracy** | ±0.15°C | MAX31865 + PT100 |
+| **RTD Accuracy** | ±0.15°C | MAX31865 + PT1000 |
 | **Control Latency** | < 2.1s | Next control loop |
 | **Web Response** | < 100ms | Local network |
 | **MQTT Publish** | Every 5s | Status interval |

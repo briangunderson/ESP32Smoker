@@ -28,6 +28,9 @@ pio device monitor --baud 115200
 | Relay 1 | 12 | Pellet auger |
 | Relay 2 | 13 | Combustion fan |
 | Relay 3 | 14 | Hot rod igniter |
+| TM1638 STB | 25 | Display strobe |
+| TM1638 CLK | 26 | Display clock |
+| TM1638 DIO | 27 | Display data |
 | LED | 2 | Status indicator |
 
 ## 🌡️ Temperature Control
@@ -57,6 +60,29 @@ pio device monitor --baud 115200
 - **ON**: Heating during startup only
 - **OFF**: Normal operation
 - **Startup**: 60 second preheat before fan starts
+
+## 🎮 Physical Controls (TM1638 Display)
+
+### Display
+- **Left 4 digits**: Current temperature (°F)
+- **Right 4 digits**: Target setpoint (°F)
+
+### Status LEDs (Left to Right)
+1. **Auger** - Pellet feeder running
+2. **Fan** - Combustion fan running
+3. **Igniter** - Hot rod active
+4. **WiFi** - Connected to network
+5. **MQTT** - Connected to broker
+6. **Error** - System fault
+7. **Running** - Smoking in progress
+8. *Reserved*
+
+### Buttons (Left to Right)
+1. **Start** - Begin smoking
+2. **Stop** - Stop and cooldown
+3. **Temp ▲** - Increase by 5°F
+4. **Temp ▼** - Decrease by 5°F
+5. **Mode** - Reserved
 
 ## 🎯 State Machine
 
@@ -133,6 +159,10 @@ home/smoker/command/setpoint    → float (temp)
 ## ⚙️ Configuration Cheat Sheet
 
 ```cpp
+// RTD Sensor (PT1000)
+#define MAX31865_RTD_RESISTANCE_AT_0  1000.0  // PT1000 = 1000Ω
+#define MAX31865_REFERENCE_RESISTANCE 4300.0  // 4.3kΩ reference
+
 // Temperature Limits (°F)
 #define TEMP_MIN_SETPOINT      150
 #define TEMP_MAX_SETPOINT      350
@@ -172,7 +202,9 @@ home/smoker/command/setpoint    → float (temp)
 | Won't upload | Hold BOOT button, check COM port |
 | No serial output | Check baud 115200, USB driver |
 | Can't connect WiFi | Use AP mode or check network |
-| Temp reads crazy | Check MAX31865 SPI wiring |
+| Temp reads crazy | Check MAX31865 SPI, verify PT1000 |
+| Display blank | Check TM1638 wiring, 5V power |
+| Buttons not working | Check serial for button presses |
 | Relays don't click | Check power supply, GPIO pins |
 | MQTT offline | Check broker IP and port |
 | Web page slow | Check WiFi signal strength |
@@ -232,11 +264,14 @@ home/smoker/command/setpoint    → float (temp)
 - [ ] Code builds without errors (`pio run`)
 - [ ] Uploads successfully to ESP32
 - [ ] Serial output visible at startup
+- [ ] TM1638 display shows temperature
+- [ ] All 8 LEDs illuminate correctly
+- [ ] All physical buttons respond
 - [ ] WiFi AP visible ("ESP32Smoker")
 - [ ] Can connect to web interface
 - [ ] All relays click when toggled
-- [ ] Temperature sensor reads reasonable values
-- [ ] Start/Stop/Shutdown buttons work
+- [ ] Temperature sensor reads reasonable values (PT1000)
+- [ ] Start/Stop/Shutdown buttons work (web & physical)
 - [ ] Temperature slider adjusts target
 - [ ] MQTT publishes (if configured)
 - [ ] Home Assistant receives updates

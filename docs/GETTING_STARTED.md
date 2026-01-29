@@ -36,7 +36,8 @@ code .
 ### Parts List
 - ESP32 DevKit board ($12-15)
 - MAX31865 RTD converter ($15-20)
-- PT100 RTD temperature probe ($20-40)
+- PT1000 RTD temperature probe ($20-40)
+- TM1638 LED & button module ($5-8)
 - 3-relay module ($5-10)
 - USB power supply (5V 2A minimum)
 - Jumper wires, connectors
@@ -55,7 +56,11 @@ ESP32 GPIO 12 → Relay 1 IN (Auger)
 ESP32 GPIO 13 → Relay 2 IN (Fan)
 ESP32 GPIO 14 → Relay 3 IN (Igniter)
 
-PT100 Probe → MAX31865 RTD pins
+ESP32 GPIO 25 → TM1638 STB
+ESP32 GPIO 26 → TM1638 CLK
+ESP32 GPIO 27 → TM1638 DIO
+
+PT1000 Probe → MAX31865 RTD pins
 ```
 
 ## Configuration
@@ -177,8 +182,9 @@ Edit `config.h` - all pins defined at top:
 ### Temperature Reads Crazy Values
 1. Verify MAX31865 SPI wiring
 2. Check RTD probe connection
-3. Verify RTD is correct type (PT100)
-4. Try moving RTD to different connector
+3. Verify RTD is correct type (PT1000) and reference resistor is 4.3kΩ
+4. If using PT100, update config.h resistor values accordingly
+5. Try moving RTD to different connector
 
 ### Relays Don't Click
 1. Check relay module power supply
