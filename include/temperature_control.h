@@ -15,7 +15,7 @@ enum ControllerState {
   STATE_ERROR = 5
 };
 
-// PID-like control using hysteresis
+// PID temperature control
 class TemperatureController {
 public:
   // Constructor
@@ -76,6 +76,20 @@ private:
   bool _tempOverrideEnabled;
   float _tempOverrideValue;
 
+  // PID variables
+  float _pidOutput;
+  float _integral;
+  float _previousError;
+  float _previousTemp;        // For derivative-on-measurement
+  unsigned long _lastPidUpdate;
+  unsigned long _augerCycleStart;
+  bool _augerCycleState;
+
+  // Calculated PID gains (from Proportional Band parameters)
+  float _Kp;
+  float _Ki;
+  float _Kd;
+
   // State machine handlers
   void handleIdleState();
   void handleStartupState();
@@ -85,7 +99,8 @@ private:
   void handleErrorState();
 
   // Control logic
-  void updateHysteresis();
+  void updatePID();
+  void applyPIDOutput();
   void manageFan();
   void manageAuger();
   void manageIgniter();
@@ -97,6 +112,7 @@ private:
 
   // Utility
   unsigned long getStateElapsedTime();
+  const char* stateToString(ControllerState state);
 };
 
 #endif // TEMPERATURE_CONTROL_H

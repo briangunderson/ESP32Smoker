@@ -75,7 +75,7 @@ pio device monitor --baud 115200
 5. **MQTT** - Connected to broker
 6. **Error** - System fault
 7. **Running** - Smoking in progress
-8. *Reserved*
+8. **Heartbeat** - Blinks every second (system alive)
 
 ### Buttons (Left to Right)
 1. **Start** - Begin smoking
@@ -166,7 +166,12 @@ home/smoker/command/setpoint    → float (temp)
 // Temperature Limits (°F)
 #define TEMP_MIN_SETPOINT      150
 #define TEMP_MAX_SETPOINT      350
-#define TEMP_HYSTERESIS_BAND   10    // ±5°F from setpoint
+
+// PID Gains (tune for your smoker)
+#define PID_KP                 4.0   // Proportional gain
+#define PID_KI                 0.01  // Integral gain
+#define PID_KD                 100.0 // Derivative gain
+#define AUGER_CYCLE_TIME       15000 // Auger PWM window (ms)
 
 // Timing (milliseconds)
 #define IGNITER_PREHEAT_TIME   60000 // 60 seconds

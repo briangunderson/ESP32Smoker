@@ -6,10 +6,11 @@ A modern, fully-featured wood pellet smoker controller built on ESP32 with WiFi,
 
 - **Real-time Temperature Monitoring** via MAX31865 RTD sensor
 - **3-Relay Control** for auger, fan, and igniter
-- **Hysteresis-based Temperature Control** for stable operation
+- **PID Temperature Control** for precise, stable operation (based on PiSmoker)
 - **Modern Web Dashboard** with responsive UI
 - **Home Assistant Integration** via MQTT
 - **WiFi Connectivity** with AP fallback mode
+- **Remote Logging** via Syslog (RFC 5424) for network-based monitoring
 - **Safety Features** including thermal limits and sensor error detection
 - **Configuration Persistence** using LittleFS
 - **Real-time Status Monitoring** and logging
