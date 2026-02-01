@@ -1,12 +1,21 @@
 #include "temperature_control.h"
 #include "config.h"
+#include "logger.h"
 
 TemperatureController::TemperatureController(MAX31865* tempSensor,
                                              RelayControl* relayControl)
     : _tempSensor(tempSensor), _relayControl(relayControl), _setpoint(225.0),
       _currentTemp(70.0), _state(STATE_IDLE), _previousState(STATE_IDLE),
       _stateStartTime(0), _lastUpdate(0), _consecutiveErrors(0),
-      _debugMode(false), _tempOverrideEnabled(false), _tempOverrideValue(70.0) {}
+      _debugMode(false), _tempOverrideEnabled(false), _tempOverrideValue(70.0),
+      _pidOutput(0.0), _integral(0.0), _previousError(0.0), _previousTemp(70.0),
+      _lastPidUpdate(0), _augerCycleStart(0), _augerCycleState(false) {
+
+  // Calculate PID gains from Proportional Band parameters (PiSmoker method)
+  _Kp = -1.0 / PID_PROPORTIONAL_BAND;              // = -0.0167
+  _Ki = _Kp / PID_INTEGRAL_TIME;                   // = -0.0000926
+  _Kd = _Kp * PID_DERIVATIVE_TIME;                 // = -0.75
+}
 
 void TemperatureController::begin() {
   _state = STATE_IDLE;
@@ -42,6 +51,15 @@ void TemperatureController::update() {
   // Check for temperature faults
   if (_currentTemp <= TEMP_MIN_SAFE || _currentTemp >= TEMP_MAX_SAFE) {
     handleTemperatureError();
+  }
+
+  // Detect and log state transitions
+  if (_state != _previousState) {
+    DUAL_LOGF(LOG_INFO, "\n[STATE] Transition: %s -> %s (Temp: %.1f°F)\n\n",
+              stateToString(_previousState),
+              stateToString(_state),
+              _currentTemp);
+    _previousState = _state;
   }
 
   // Run state machine
@@ -81,6 +99,14 @@ void TemperatureController::startSmoking(float targetTemp) {
   _state = STATE_STARTUP;
   _stateStartTime = millis();
   _consecutiveErrors = 0;
+
+  // Reset PID state
+  _integral = 0.0;
+  _previousError = 0.0;
+  _pidOutput = 0.0;
+  _lastPidUpdate = millis();
+  _augerCycleStart = millis();
+  _augerCycleState = false;
 
   if (ENABLE_SERIAL_DEBUG) {
     Serial.printf("[TEMP] Starting up - target: %.1f°F\n", _setpoint);
@@ -164,30 +190,34 @@ void TemperatureController::handleIdleState() {
 void TemperatureController::handleStartupState() {
   unsigned long elapsed = getStateElapsedTime();
 
+  // Turn off igniter once temperature exceeds 100°F (safety and efficiency)
+  bool igniterNeeded = (_currentTemp < IGNITER_CUTOFF_TEMP);
+
   if (elapsed < IGNITER_PREHEAT_TIME) {
     // Phase 1: Preheat igniter
-    _relayControl->setIgniter(RELAY_ON);
+    _relayControl->setIgniter(igniterNeeded ? RELAY_ON : RELAY_OFF);
     _relayControl->setFan(RELAY_OFF);
     _relayControl->setAuger(RELAY_OFF);
   } else if (elapsed < IGNITER_PREHEAT_TIME + FAN_STARTUP_DELAY) {
     // Phase 2: Start fan
-    _relayControl->setIgniter(RELAY_ON);
+    _relayControl->setIgniter(igniterNeeded ? RELAY_ON : RELAY_OFF);
     _relayControl->setFan(RELAY_ON);
     _relayControl->setAuger(RELAY_OFF);
   } else if (elapsed < STARTUP_TIMEOUT) {
     // Phase 3: Waiting for ignition
-    _relayControl->setIgniter(RELAY_ON);
+    _relayControl->setIgniter(igniterNeeded ? RELAY_ON : RELAY_OFF);
     _relayControl->setFan(RELAY_ON);
     _relayControl->setAuger(RELAY_ON);
 
-    // Check if we've reached temperature
-    if (_currentTemp >= (_setpoint - TEMP_HYSTERESIS_BAND / 2)) {
+    // Check if we've reached startup threshold (absolute temperature, not relative)
+    // PiSmoker transitions to Hold mode at 115°F regardless of setpoint
+    if (_currentTemp >= STARTUP_TEMP_THRESHOLD) {
       _state = STATE_RUNNING;
       _stateStartTime = millis();
 
       if (ENABLE_SERIAL_DEBUG) {
-        Serial.printf("[TEMP] Startup complete - reached %.1f°F\n",
-                      _currentTemp);
+        Serial.printf("[TEMP] Startup complete - reached %.1f°F (threshold: %d°F)\n",
+                      _currentTemp, STARTUP_TEMP_THRESHOLD);
       }
     }
   } else {
@@ -205,7 +235,7 @@ void TemperatureController::handleRunningState() {
   _relayControl->setIgniter(RELAY_OFF); // Turn off igniter during normal operation
   manageFan();
   manageAuger();
-  updateHysteresis();
+  updatePID();
 }
 
 void TemperatureController::handleCooldownState() {
@@ -237,24 +267,123 @@ void TemperatureController::handleShutdownState() {
 void TemperatureController::handleErrorState() {
   _relayControl->emergencyStop();
 
-  if (ENABLE_SERIAL_DEBUG) {
-    Serial.printf("[TEMP] Error state - consecutive errors: %d\n",
-                  _consecutiveErrors);
+  // Log error state details periodically
+  static unsigned long lastErrorLog = 0;
+  if (millis() - lastErrorLog > 5000) {
+    lastErrorLog = millis();
+
+    DUAL_LOGF(LOG_ERR, "========================================\n");
+    DUAL_LOGF(LOG_ERR, "[TEMP] ERROR STATE DIAGNOSTICS\n");
+    DUAL_LOGF(LOG_ERR, "========================================\n");
+    DUAL_LOGF(LOG_ERR, "  Consecutive sensor errors: %d\n", _consecutiveErrors);
+    DUAL_LOGF(LOG_ERR, "  Current temperature: %.1f°F\n", _currentTemp);
+    DUAL_LOGF(LOG_ERR, "  Setpoint: %.1f°F\n", _setpoint);
+    DUAL_LOGF(LOG_ERR, "  Time in error state: %lu ms\n", getStateElapsedTime());
+
+    // Try to read sensor and get fault details
+    DUAL_LOGF(LOG_ERR, "\n  Attempting sensor read for diagnostics...\n");
+    uint8_t fault = _tempSensor->getFaultStatus();
+    if (fault != 0) {
+      _tempSensor->printFaultStatus(fault);
+    } else {
+      DUAL_LOGF(LOG_ERR, "  [MAX31865] No faults reported by sensor\n");
+    }
+
+    DUAL_LOGF(LOG_ERR, "\n  To recover from error state:\n");
+    DUAL_LOGF(LOG_ERR, "  1. Fix sensor wiring/connections\n");
+    DUAL_LOGF(LOG_ERR, "  2. Use web interface to restart\n");
+    DUAL_LOGF(LOG_ERR, "  3. Or power cycle the ESP32\n");
+    DUAL_LOGF(LOG_ERR, "========================================\n");
   }
 }
 
-void TemperatureController::updateHysteresis() {
-  float lowerBound = _setpoint - (TEMP_HYSTERESIS_BAND / 2.0);
-  float upperBound = _setpoint + (TEMP_HYSTERESIS_BAND / 2.0);
+void TemperatureController::updatePID() {
+  unsigned long now = millis();
 
-  if (_currentTemp < lowerBound) {
-    // Need heat - enable auger if fan is on
-    _relayControl->setSafeAuger(RELAY_ON);
-  } else if (_currentTemp > upperBound) {
-    // Too hot - disable auger
-    _relayControl->setAuger(RELAY_OFF);
+  // Calculate time delta in seconds
+  float dt = (now - _lastPidUpdate) / 1000.0;
+  if (dt < 0.001) return; // Avoid division by zero
+
+  _lastPidUpdate = now;
+
+  // Calculate error (NOTE: reversed from standard PID - currentTemp - setpoint)
+  float error = _currentTemp - _setpoint;
+
+  // Proportional term with 0.5 centering (Proportional Band method)
+  // At setpoint: P = 0.5 (50% output)
+  // Below setpoint: P > 0.5 (increase auger)
+  // Above setpoint: P < 0.5 (decrease auger)
+  float P = _Kp * error + 0.5;
+
+  // Integral term (with anti-windup limiting to 50% of output range)
+  _integral += error * dt;
+
+  // Limit integral contribution to 50% of output range
+  float integralContribution = 0.5;
+  float integralMax = abs(integralContribution / _Ki);
+  float integralMin = -integralMax;
+
+  if (_integral > integralMax) _integral = integralMax;
+  if (_integral < integralMin) _integral = integralMin;
+
+  float I = _Ki * _integral;
+
+  // Derivative term on measurement (not error) to prevent derivative kick
+  // When setpoint changes, derivative won't spike
+  float derivative = (_currentTemp - _previousTemp) / dt;
+  float D = _Kd * derivative;
+
+  // Calculate PID output (0.0 to 1.0 range)
+  _pidOutput = P + I + D;
+
+  // Clamp output to valid range (0.0 - 1.0)
+  if (_pidOutput > PID_OUTPUT_MAX) _pidOutput = PID_OUTPUT_MAX;
+  if (_pidOutput < PID_OUTPUT_MIN) _pidOutput = PID_OUTPUT_MIN;
+
+  // Store for next iteration
+  _previousError = error;
+  _previousTemp = _currentTemp;
+
+  // Apply PID output to auger control
+  applyPIDOutput();
+
+  if (ENABLE_SERIAL_DEBUG) {
+    static unsigned long lastDebug = 0;
+    if (now - lastDebug > 5000) {
+      lastDebug = now;
+      Serial.printf("[PID] Temp:%.1f Set:%.1f Err:%.1f P:%.3f I:%.3f D:%.3f Out:%.2f\n",
+                    _currentTemp, _setpoint, error, P, I, D, _pidOutput);
+    }
   }
-  // else: stay in current state (hysteresis band)
+}
+
+void TemperatureController::applyPIDOutput() {
+  // Time-proportioning control: auger cycles on/off within AUGER_CYCLE_TIME window
+  // based on PID output (0.0 to 1.0)
+
+  unsigned long now = millis();
+  unsigned long cyclePosition = (now - _augerCycleStart) % AUGER_CYCLE_TIME;
+
+  // Calculate on-time from PID output (already enforces minimum via PID_OUTPUT_MIN)
+  unsigned long onTime = (unsigned long)(AUGER_CYCLE_TIME * _pidOutput);
+
+  // Reset cycle if it wrapped
+  if (cyclePosition < 100 && (now - _augerCycleStart) > AUGER_CYCLE_TIME) {
+    _augerCycleStart = now;
+  }
+
+  // Determine auger state based on position in cycle
+  bool shouldBeOn = (cyclePosition < onTime);
+
+  // Only change state if needed (reduces relay wear)
+  if (shouldBeOn != _augerCycleState) {
+    _augerCycleState = shouldBeOn;
+    if (shouldBeOn) {
+      _relayControl->setSafeAuger(RELAY_ON);
+    } else {
+      _relayControl->setAuger(RELAY_OFF);
+    }
+  }
 }
 
 void TemperatureController::manageFan() {
@@ -263,7 +392,7 @@ void TemperatureController::manageFan() {
 }
 
 void TemperatureController::manageAuger() {
-  // Controlled by updateHysteresis()
+  // Controlled by PID via applyPIDOutput()
 }
 
 void TemperatureController::manageIgniter() {
@@ -313,25 +442,58 @@ bool TemperatureController::readTemperature() {
 void TemperatureController::handleSensorError() {
   _consecutiveErrors++;
 
-  if (ENABLE_SERIAL_DEBUG) {
-    Serial.printf("[TEMP] Sensor error #%d\n", _consecutiveErrors);
+  DUAL_LOGF(LOG_WARNING, "----------------------------------------\n");
+  DUAL_LOGF(LOG_WARNING, "[TEMP] SENSOR READ FAILURE #%d of %d\n",
+            _consecutiveErrors, SENSOR_ERROR_THRESHOLD);
+
+  // Get detailed fault information from sensor
+  uint8_t fault = _tempSensor->getFaultStatus();
+  if (fault != 0) {
+    _tempSensor->printFaultStatus(fault);
+  } else {
+    DUAL_LOGF(LOG_WARNING, "[TEMP] Sensor returned error value but no faults reported\n");
+    DUAL_LOGF(LOG_WARNING, "  Possible causes:\n");
+    DUAL_LOGF(LOG_WARNING, "  - SPI communication problem\n");
+    DUAL_LOGF(LOG_WARNING, "  - Sensor not properly initialized\n");
+    DUAL_LOGF(LOG_WARNING, "  - Power supply issue\n");
   }
+  DUAL_LOGF(LOG_WARNING, "----------------------------------------\n");
 
   if (_consecutiveErrors >= SENSOR_ERROR_THRESHOLD) {
     _state = STATE_ERROR;
     _relayControl->emergencyStop();
 
-    if (ENABLE_SERIAL_DEBUG) {
-      Serial.println("[TEMP] Sensor error threshold exceeded - emergency stop");
-    }
+    DUAL_LOGF(LOG_CRIT, "\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+    DUAL_LOGF(LOG_CRIT, "! ENTERING ERROR STATE - EMERGENCY STOP !\n");
+    DUAL_LOGF(LOG_CRIT, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+    DUAL_LOGF(LOG_CRIT, "! Reason: %d consecutive sensor failures !\n",
+              _consecutiveErrors);
+    DUAL_LOGF(LOG_CRIT, "! All relays have been turned OFF       !\n");
+    DUAL_LOGF(LOG_CRIT, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
   }
 }
 
 void TemperatureController::handleTemperatureError() {
-  if (ENABLE_SERIAL_DEBUG) {
-    Serial.printf("[TEMP] Temperature out of safe range: %.1f°F\n",
-                  _currentTemp);
+  DUAL_LOGF(LOG_CRIT, "\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+  DUAL_LOGF(LOG_CRIT, "! TEMPERATURE OUT OF SAFE RANGE        !\n");
+  DUAL_LOGF(LOG_CRIT, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+  DUAL_LOGF(LOG_CRIT, "! Current: %.1f°F\n", _currentTemp);
+  DUAL_LOGF(LOG_CRIT, "! Safe range: %d°F to %d°F\n", TEMP_MIN_SAFE, TEMP_MAX_SAFE);
+
+  if (_currentTemp < TEMP_MIN_SAFE) {
+    DUAL_LOGF(LOG_CRIT, "! PROBLEM: Temperature too LOW         !\n");
+    DUAL_LOGF(LOG_CRIT, "! Possible causes:                     !\n");
+    DUAL_LOGF(LOG_CRIT, "!   - Sensor disconnected/failed       !\n");
+    DUAL_LOGF(LOG_CRIT, "!   - Sensor reading incorrect value   !\n");
+  } else {
+    DUAL_LOGF(LOG_CRIT, "! PROBLEM: Temperature too HIGH        !\n");
+    DUAL_LOGF(LOG_CRIT, "! Possible causes:                     !\n");
+    DUAL_LOGF(LOG_CRIT, "!   - Runaway fire condition           !\n");
+    DUAL_LOGF(LOG_CRIT, "!   - Control system malfunction       !\n");
+    DUAL_LOGF(LOG_CRIT, "!   - Sensor reading incorrect value   !\n");
   }
+  DUAL_LOGF(LOG_CRIT, "! ENTERING ERROR STATE                 !\n");
+  DUAL_LOGF(LOG_CRIT, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
 
   _state = STATE_ERROR;
   _relayControl->emergencyStop();
@@ -339,6 +501,25 @@ void TemperatureController::handleTemperatureError() {
 
 unsigned long TemperatureController::getStateElapsedTime() {
   return millis() - _stateStartTime;
+}
+
+const char* TemperatureController::stateToString(ControllerState state) {
+  switch (state) {
+  case STATE_IDLE:
+    return "IDLE";
+  case STATE_STARTUP:
+    return "STARTUP";
+  case STATE_RUNNING:
+    return "RUNNING";
+  case STATE_COOLDOWN:
+    return "COOLDOWN";
+  case STATE_SHUTDOWN:
+    return "SHUTDOWN";
+  case STATE_ERROR:
+    return "ERROR";
+  default:
+    return "UNKNOWN";
+  }
 }
 
 // Debug/Testing Methods

@@ -1,0 +1,240 @@
+{
+  "description": "Parse ESP32 syslog RFC 5424 messages and extract structured data",
+  "processors": [
+    {
+      "grok": {
+        "field": "message",
+        "patterns": [
+          "<%{NONNEGINT:priority}>%{NONNEGINT:version} (?:%{TIMESTAMP_ISO8601:syslog_timestamp}|-) (?:%{HOSTNAME:device_name}|-) (?:%{NOTSPACE:app_name}|-) (?:%{NOTSPACE:pid}|-) (?:%{NOTSPACE:msgid}|-) (?:\\[%{DATA:structured_data}\\]|-) (?:\\xEF\\xBB\\xBF)?%{GREEDYDATA:log_message}"
+        ],
+        "ignore_missing": true,
+        "ignore_failure": false
+      }
+    },
+    {
+      "script": {
+        "description": "Calculate facility and severity from priority",
+        "lang": "painless",
+        "source": "if (ctx.priority != null) { ctx.facility = Integer.parseInt(ctx.priority) / 8; ctx.severity_num = Integer.parseInt(ctx.priority) % 8; }"
+      }
+    },
+    {
+      "script": {
+        "description": "Map severity number to name",
+        "lang": "painless",
+        "source": "if (ctx.severity_num != null) { def severity_map = ['emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug']; if (ctx.severity_num >= 0 && ctx.severity_num < 8) { ctx.severity = severity_map[ctx.severity_num]; } }"
+      }
+    },
+    {
+      "script": {
+        "description": "Map facility number to name",
+        "lang": "painless",
+        "source": "if (ctx.facility != null) { def facility_map = ['kernel', 'user', 'mail', 'system', 'security', 'syslog', 'printer', 'news', 'uucp', 'clock', 'security2', 'ftp', 'ntp', 'audit', 'alert', 'clock2', 'local0', 'local1', 'local2', 'local3', 'local4', 'local5', 'local6', 'local7']; if (ctx.facility >= 0 && ctx.facility < 24) { ctx.facility_name = facility_map[ctx.facility]; } }"
+      }
+    },
+    {
+      "date": {
+        "field": "syslog_timestamp",
+        "target_field": "@timestamp",
+        "formats": ["ISO8601"],
+        "ignore_failure": true
+      }
+    },
+    {
+      "set": {
+        "field": "message",
+        "value": "{{log_message}}",
+        "override": false
+      }
+    },
+    {
+      "grok": {
+        "field": "log_message",
+        "patterns": [
+          "\\[Temperature\\] Current: %{NUMBER:temperature}°F, Setpoint: %{NUMBER:setpoint}°F",
+          "Temperature: %{NUMBER:temperature}°F",
+          "Setpoint: %{NUMBER:setpoint}°F"
+        ],
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "grok": {
+        "field": "log_message",
+        "patterns": [
+          "\\[PID\\] P=%{NUMBER:pid_p}, I=%{NUMBER:pid_i}, D=%{NUMBER:pid_d}, Output=%{NUMBER:pid_output}",
+          "PID: P=%{NUMBER:pid_p} I=%{NUMBER:pid_i} D=%{NUMBER:pid_d} Output=%{NUMBER:pid_output}"
+        ],
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "grok": {
+        "field": "log_message",
+        "patterns": [
+          "State transition: %{WORD} -> %{WORD:state}",
+          "Entering state: %{WORD:state}",
+          "State: %{WORD:state}"
+        ],
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "grok": {
+        "field": "log_message",
+        "patterns": [
+          "\\[Relay\\] Auger: %{WORD:relay_auger}, Fan: %{WORD:relay_fan}, Igniter: %{WORD:relay_igniter}",
+          "Auger: %{WORD:relay_auger} Fan: %{WORD:relay_fan} Igniter: %{WORD:relay_igniter}"
+        ],
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "script": {
+        "description": "Convert relay string values to boolean",
+        "lang": "painless",
+        "source": "if (ctx.relay_auger != null) { ctx.relay_auger = ctx.relay_auger.toLowerCase() == 'on' || ctx.relay_auger == '1' || ctx.relay_auger == 'true'; } if (ctx.relay_fan != null) { ctx.relay_fan = ctx.relay_fan.toLowerCase() == 'on' || ctx.relay_fan == '1' || ctx.relay_fan == 'true'; } if (ctx.relay_igniter != null) { ctx.relay_igniter = ctx.relay_igniter.toLowerCase() == 'on' || ctx.relay_igniter == '1' || ctx.relay_igniter == 'true'; }",
+        "ignore_failure": true
+      }
+    },
+    {
+      "grok": {
+        "field": "log_message",
+        "patterns": [
+          "ERROR: %{GREEDYDATA:error_code}",
+          "Error code: %{NOTSPACE:error_code}"
+        ],
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "set": {
+        "field": "log_type",
+        "value": "temperature",
+        "if": "ctx.temperature != null"
+      }
+    },
+    {
+      "set": {
+        "field": "log_type",
+        "value": "pid_control",
+        "if": "ctx.pid_output != null"
+      }
+    },
+    {
+      "set": {
+        "field": "log_type",
+        "value": "state_transition",
+        "if": "ctx.state != null && ctx.log_type == null"
+      }
+    },
+    {
+      "set": {
+        "field": "log_type",
+        "value": "relay_control",
+        "if": "ctx.relay_auger != null && ctx.log_type == null"
+      }
+    },
+    {
+      "set": {
+        "field": "log_type",
+        "value": "error",
+        "if": "ctx.error_code != null || ctx.severity == 'error' || ctx.severity == 'critical'"
+      }
+    },
+    {
+      "set": {
+        "field": "tags",
+        "value": ["esp32", "iot", "syslog"],
+        "override": false
+      }
+    },
+    {
+      "append": {
+        "field": "tags",
+        "value": "{{app_name}}",
+        "if": "ctx.app_name != null"
+      }
+    },
+    {
+      "append": {
+        "field": "tags",
+        "value": "{{log_type}}",
+        "if": "ctx.log_type != null"
+      }
+    },
+    {
+      "convert": {
+        "field": "temperature",
+        "type": "float",
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "convert": {
+        "field": "setpoint",
+        "type": "float",
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "convert": {
+        "field": "pid_p",
+        "type": "float",
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "convert": {
+        "field": "pid_i",
+        "type": "float",
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "convert": {
+        "field": "pid_d",
+        "type": "float",
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "convert": {
+        "field": "pid_output",
+        "type": "float",
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "remove": {
+        "field": ["syslog_timestamp", "log_message", "version", "msgid"],
+        "ignore_missing": true
+      }
+    }
+  ],
+  "on_failure": [
+    {
+      "set": {
+        "field": "error.message",
+        "value": "Failed to parse syslog message: {{_ingest.on_failure_message}}"
+      }
+    },
+    {
+      "set": {
+        "field": "tags",
+        "value": ["parse_failure"]
+      }
+    }
+  ]
+}

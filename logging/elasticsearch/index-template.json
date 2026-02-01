@@ -1,0 +1,120 @@
+{
+  "index_patterns": ["esp32-logs-*"],
+  "priority": 100,
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 1,
+      "index.refresh_interval": "5s",
+      "index.default_pipeline": "esp32-syslog-pipeline"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "device_name": {
+          "type": "keyword",
+          "fields": {
+            "text": {
+              "type": "text"
+            }
+          }
+        },
+        "app_name": {
+          "type": "keyword",
+          "fields": {
+            "text": {
+              "type": "text"
+            }
+          }
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "severity": {
+          "type": "keyword"
+        },
+        "severity_num": {
+          "type": "integer"
+        },
+        "facility": {
+          "type": "integer"
+        },
+        "facility_name": {
+          "type": "keyword"
+        },
+        "message": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "host": {
+          "type": "keyword"
+        },
+        "pid": {
+          "type": "integer"
+        },
+        "raw_message": {
+          "type": "text"
+        },
+        "structured_data": {
+          "type": "object",
+          "dynamic": true
+        },
+        "state": {
+          "type": "keyword"
+        },
+        "temperature": {
+          "type": "float"
+        },
+        "setpoint": {
+          "type": "float"
+        },
+        "pid_p": {
+          "type": "float"
+        },
+        "pid_i": {
+          "type": "float"
+        },
+        "pid_d": {
+          "type": "float"
+        },
+        "pid_output": {
+          "type": "float"
+        },
+        "relay_auger": {
+          "type": "boolean"
+        },
+        "relay_fan": {
+          "type": "boolean"
+        },
+        "relay_igniter": {
+          "type": "boolean"
+        },
+        "error_code": {
+          "type": "keyword"
+        },
+        "error_count": {
+          "type": "integer"
+        },
+        "log_type": {
+          "type": "keyword"
+        },
+        "tags": {
+          "type": "keyword"
+        }
+      }
+    }
+  },
+  "version": 1,
+  "_meta": {
+    "description": "Index template for ESP32 IoT device logs with syslog RFC 5424 format",
+    "created_by": "ESP32 Logging Infrastructure",
+    "created_date": "2026-01-30"
+  }
+}

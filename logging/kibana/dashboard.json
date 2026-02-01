@@ -1,0 +1,62 @@
+{
+  "attributes": {
+    "title": "ESP32 Smoker Monitoring",
+    "description": "Comprehensive monitoring dashboard for ESP32 smoker controller with temperature tracking, PID performance, and error monitoring",
+    "panelsJSON": "[{\"version\":\"8.0.0\",\"gridData\":{\"x\":0,\"y\":0,\"w\":12,\"h\":8,\"i\":\"1\"},\"panelIndex\":\"1\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_1\"},{\"version\":\"8.0.0\",\"gridData\":{\"x\":12,\"y\":0,\"w\":12,\"h\":8,\"i\":\"2\"},\"panelIndex\":\"2\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_2\"},{\"version\":\"8.0.0\",\"gridData\":{\"x\":24,\"y\":0,\"w\":12,\"h\":8,\"i\":\"3\"},\"panelIndex\":\"3\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_3\"},{\"version\":\"8.0.0\",\"gridData\":{\"x\":36,\"y\":0,\"w\":12,\"h\":8,\"i\":\"4\"},\"panelIndex\":\"4\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_4\"},{\"version\":\"8.0.0\",\"gridData\":{\"x\":0,\"y\":8,\"w\":24,\"h\":12,\"i\":\"5\"},\"panelIndex\":\"5\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_5\"},{\"version\":\"8.0.0\",\"gridData\":{\"x\":24,\"y\":8,\"w\":24,\"h\":12,\"i\":\"6\"},\"panelIndex\":\"6\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_6\"},{\"version\":\"8.0.0\",\"gridData\":{\"x\":0,\"y\":20,\"w\":24,\"h\":12,\"i\":\"7\"},\"panelIndex\":\"7\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_7\"},{\"version\":\"8.0.0\",\"gridData\":{\"x\":24,\"y\":20,\"w\":24,\"h\":12,\"i\":\"8\"},\"panelIndex\":\"8\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_8\"}]",
+    "optionsJSON": "{\"useMargins\":true,\"syncColors\":false,\"hidePanelTitles\":false}",
+    "version": 1,
+    "timeRestore": true,
+    "timeTo": "now",
+    "timeFrom": "now-1h",
+    "refreshInterval": {
+      "pause": false,
+      "value": 30000
+    },
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\":{\"query\":\"\",\"language\":\"kuery\"},\"filter\":[]}"
+    }
+  },
+  "references": [
+    {
+      "name": "panel_1",
+      "type": "visualization",
+      "id": "esp32-viz-error-rate"
+    },
+    {
+      "name": "panel_2",
+      "type": "visualization",
+      "id": "esp32-viz-device-status"
+    },
+    {
+      "name": "panel_3",
+      "type": "visualization",
+      "id": "esp32-viz-log-level-distribution"
+    },
+    {
+      "name": "panel_4",
+      "type": "visualization",
+      "id": "esp32-viz-logs-over-time"
+    },
+    {
+      "name": "panel_5",
+      "type": "visualization",
+      "id": "esp32-viz-temperature-timeline"
+    },
+    {
+      "name": "panel_6",
+      "type": "visualization",
+      "id": "esp32-viz-pid-performance"
+    },
+    {
+      "name": "panel_7",
+      "type": "visualization",
+      "id": "esp32-viz-recent-errors"
+    },
+    {
+      "name": "panel_8",
+      "type": "visualization",
+      "id": "esp32-viz-state-transitions"
+    }
+  ],
+  "managed": false
+}

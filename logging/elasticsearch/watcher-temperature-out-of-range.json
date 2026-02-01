@@ -1,0 +1,93 @@
+{
+  "trigger": {
+    "schedule": {
+      "interval": "1m"
+    }
+  },
+  "input": {
+    "search": {
+      "request": {
+        "indices": ["esp32-logs-*"],
+        "body": {
+          "query": {
+            "bool": {
+              "must": [
+                {
+                  "exists": {
+                    "field": "temperature"
+                  }
+                },
+                {
+                  "range": {
+                    "@timestamp": {
+                      "gte": "now-2m"
+                    }
+                  }
+                }
+              ],
+              "should": [
+                {
+                  "range": {
+                    "temperature": {
+                      "lt": 50
+                    }
+                  }
+                },
+                {
+                  "range": {
+                    "temperature": {
+                      "gt": 500
+                    }
+                  }
+                }
+              ],
+              "minimum_should_match": 1
+            }
+          },
+          "size": 10,
+          "sort": [
+            {
+              "@timestamp": {
+                "order": "desc"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "condition": {
+    "compare": {
+      "ctx.payload.hits.total": {
+        "gt": 0
+      }
+    }
+  },
+  "actions": {
+    "log_warning": {
+      "logging": {
+        "level": "warn",
+        "text": "ESP32 Smoker temperature out of safe range! Device: {{ctx.payload.hits.hits.0._source.device_name}}, Temperature: {{ctx.payload.hits.hits.0._source.temperature}}°F"
+      }
+    },
+    "index_alert": {
+      "index": {
+        "index": "esp32-alerts",
+        "doc_id": "temp-range-{{ctx.execution_time}}",
+        "body": {
+          "alert_type": "temperature_out_of_range",
+          "timestamp": "{{ctx.execution_time}}",
+          "device_name": "{{ctx.payload.hits.hits.0._source.device_name}}",
+          "temperature": "{{ctx.payload.hits.hits.0._source.temperature}}",
+          "message": "Temperature {{ctx.payload.hits.hits.0._source.temperature}}°F is outside safe range (50-500°F)",
+          "severity": "critical",
+          "count": "{{ctx.payload.hits.total}}"
+        }
+      }
+    }
+  },
+  "metadata": {
+    "name": "ESP32 Temperature Out of Range Alert",
+    "description": "Alerts when temperature is below 50°F or above 500°F"
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "trigger": {
+    "schedule": {
+      "interval": "1m"
+    }
+  },
+  "input": {
+    "search": {
+      "request": {
+        "indices": ["esp32-logs-*"],
+        "body": {
+          "query": {
+            "bool": {
+              "must": [
+                {
+                  "term": {
+                    "state": "ERROR"
+                  }
+                },
+                {
+                  "range": {
+                    "@timestamp": {
+                      "gte": "now-2m"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "size": 10,
+          "sort": [
+            {
+              "@timestamp": {
+                "order": "desc"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "condition": {
+    "compare": {
+      "ctx.payload.hits.total": {
+        "gt": 0
+      }
+    }
+  },
+  "actions": {
+    "log_error": {
+      "logging": {
+        "level": "error",
+        "text": "ESP32 Smoker entered ERROR state! Device: {{ctx.payload.hits.hits.0._source.device_name}}, Message: {{ctx.payload.hits.hits.0._source.message}}"
+      }
+    },
+    "index_alert": {
+      "index": {
+        "index": "esp32-alerts",
+        "doc_id": "error-state-{{ctx.execution_time}}",
+        "body": {
+          "alert_type": "error_state",
+          "timestamp": "{{ctx.execution_time}}",
+          "device_name": "{{ctx.payload.hits.hits.0._source.device_name}}",
+          "message": "{{ctx.payload.hits.hits.0._source.message}}",
+          "severity": "critical",
+          "count": "{{ctx.payload.hits.total}}"
+        }
+      }
+    }
+  },
+  "metadata": {
+    "name": "ESP32 Error State Alert",
+    "description": "Alerts when ESP32 smoker enters ERROR state"
+  }
+}

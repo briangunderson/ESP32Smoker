@@ -66,6 +66,12 @@ public:
   // Get raw RTD resistance value
   uint16_t readRawRTD(void);
 
+  // Decode fault status to human-readable string
+  void printFaultStatus(uint8_t fault);
+
+  // Print detailed diagnostics (all registers, resistance, calculations)
+  void printDetailedDiagnostics(void);
+
 private:
   uint8_t _chipSelectPin;
   float _refResistance;

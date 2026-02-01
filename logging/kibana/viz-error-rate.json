@@ -1,0 +1,20 @@
+{
+  "attributes": {
+    "title": "ESP32 - Error Rate (15min)",
+    "visState": "{\"title\":\"ESP32 - Error Rate (15min)\",\"type\":\"metric\",\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"params\":{},\"schema\":\"metric\"}],\"params\":{\"addTooltip\":true,\"addLegend\":false,\"type\":\"metric\",\"metric\":{\"percentageMode\":false,\"useRanges\":false,\"colorSchema\":\"Red to Green\",\"metricColorMode\":\"Background\",\"colorsRange\":[{\"from\":0,\"to\":5,\"color\":\"#7EB26D\"},{\"from\":5,\"to\":20,\"color\":\"#EAB839\"},{\"from\":20,\"to\":10000,\"color\":\"#BF1B00\"}],\"labels\":{\"show\":true},\"invertColors\":false,\"style\":{\"bgFill\":\"#000\",\"bgColor\":false,\"labelColor\":false,\"subText\":\"\",\"fontSize\":60}}}}",
+    "uiStateJSON": "{}",
+    "description": "Count of error and critical messages in the last 15 minutes",
+    "version": 1,
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\":{\"query\":\"severity:(error OR critical)\",\"language\":\"kuery\"},\"filter\":[{\"meta\":{\"index\":\"esp32-logs-*\",\"params\":{\"gte\":\"now-15m\",\"lte\":\"now\"},\"alias\":null,\"disabled\":false,\"negate\":false},\"query\":{\"range\":{\"@timestamp\":{\"gte\":\"now-15m\",\"lte\":\"now\"}}},\"$state\":{\"store\":\"appState\"}}],\"indexRefName\":\"kibanaSavedObjectMeta.searchSourceJSON.index\"}"
+    }
+  },
+  "references": [
+    {
+      "id": "esp32-logs-*",
+      "name": "kibanaSavedObjectMeta.searchSourceJSON.index",
+      "type": "index-pattern"
+    }
+  ],
+  "managed": false
+}

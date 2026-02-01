@@ -10,6 +10,8 @@
 #include "web_server.h"
 #include "mqtt_client.h"
 #include "tm1638_display.h"
+#include "logger.h"
+#include "telnet_server.h"
 
 // Global objects
 MAX31865* tempSensor = nullptr;
@@ -18,6 +20,27 @@ TemperatureController* controller = nullptr;
 WebServer* webServer = nullptr;
 MQTTClient* mqttClient = nullptr;
 TM1638Display* display = nullptr;
+
+// Helper function to log to both Serial and Syslog
+void logMessage(uint16_t priority, const char* tag, const char* format, ...) {
+  char buffer[LOG_BUFFER_SIZE];
+  va_list args;
+
+  // Format the message
+  va_start(args, format);
+  vsnprintf(buffer, LOG_BUFFER_SIZE, format, args);
+  va_end(args);
+
+  // Print to Serial
+  if (ENABLE_SERIAL_DEBUG) {
+    Serial.printf("[%s] %s\n", tag, buffer);
+  }
+
+  // Send to Syslog
+  char syslogMsg[LOG_BUFFER_SIZE];
+  snprintf(syslogMsg, LOG_BUFFER_SIZE, "[%s] %s", tag, buffer);
+  logger.log(priority, syslogMsg);
+}
 
 // Network configuration
 String wifiSSID = WIFI_SSID;
@@ -256,6 +279,12 @@ void setup() {
   // Initialize WiFi
   initializeWiFi();
 
+  // Initialize Syslog (after WiFi)
+  logger.begin();
+
+  // Initialize Telnet Server (after WiFi)
+  telnetServer.begin();
+
   // Initialize OTA updates
   initializeOTA();
 
@@ -274,6 +303,7 @@ void setup() {
   digitalWrite(PIN_LED_STATUS, LOW);
 
   Serial.println("\n[SETUP] Initialization complete!\n");
+  logMessage(LOG_INFO, "SETUP", "ESP32 Smoker Controller v%s initialized successfully", FIRMWARE_VERSION);
 }
 
 // ============================================================================
@@ -283,6 +313,9 @@ void setup() {
 void loop() {
   // Handle OTA updates
   ArduinoOTA.handle();
+
+  // Handle telnet server
+  telnetServer.loop();
 
   // Update temperature control loop
   controller->update();
@@ -313,15 +346,26 @@ void loop() {
                       controller->getState() == STATE_STARTUP);
     display->setStatusLEDs(wifiConnected, mqttConnected, isError, isRunning);
 
+    // Heartbeat LED (blink LED 8 every second)
+    static unsigned long lastBlink = 0;
+    static bool heartbeatState = false;
+    if (millis() - lastBlink > 1000) {
+      lastBlink = millis();
+      heartbeatState = !heartbeatState;
+      display->setLED(LED_8, heartbeatState);
+    }
+
     // Handle button presses
     handleDisplayButtons();
   }
 
-  // Status blink LED
-  static unsigned long lastBlink = 0;
-  if (millis() - lastBlink > 1000) {
-    lastBlink = millis();
-    digitalWrite(PIN_LED_STATUS, !digitalRead(PIN_LED_STATUS));
+  // Built-in LED heartbeat
+  static unsigned long lastBuiltinBlink = 0;
+  static bool builtinState = false;
+  if (millis() - lastBuiltinBlink > 1000) {
+    lastBuiltinBlink = millis();
+    builtinState = !builtinState;
+    digitalWrite(PIN_LED_STATUS, builtinState);
   }
 
   // Periodic status print (debugging)
@@ -337,6 +381,14 @@ void loop() {
           controller->getStateName(), status.auger ? "ON" : "OFF",
           status.fan ? "ON" : "OFF",
           mqttClient->isConnected() ? "Connected" : "Offline");
+
+      // Also send to syslog
+      logMessage(LOG_INFO, "STATUS",
+                 "Temp: %.1f°F | Setpoint: %.1f°F | State: %s | Auger: %s | Fan: %s",
+                 status.currentTemp, status.setpoint,
+                 controller->getStateName(),
+                 status.auger ? "ON" : "OFF",
+                 status.fan ? "ON" : "OFF");
     }
   }
 

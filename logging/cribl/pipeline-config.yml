@@ -1,0 +1,186 @@
+# Cribl Stream Pipeline Configuration for ESP32 Syslog
+# This pipeline processes syslog messages from ESP32 devices and forwards them to Elasticsearch
+
+sources:
+  syslog_udp:
+    type: syslog
+    protocol: udp
+    port: 9514
+    host: 0.0.0.0
+    format: rfc5424
+    disabled: false
+    description: "UDP syslog receiver for ESP32 devices on port 9514"
+
+routes:
+  - id: esp32_route
+    name: "ESP32 Device Logs"
+    filter: "sourcetype=='syslog' && (host.includes('ESP32') || appname=='smoker')"
+    output: elasticsearch_output
+    description: "Route ESP32 syslog messages to Elasticsearch"
+
+  - id: default_route
+    name: "Default Route"
+    filter: "true"
+    output: devnull
+    final: true
+
+pipelines:
+  esp32_processing:
+    id: esp32_processing
+    name: "ESP32 Log Processing"
+    description: "Parse and enrich ESP32 syslog messages"
+    functions:
+      # Parse syslog priority into facility and severity
+      - id: eval_priority
+        filter: "true"
+        conf:
+          add:
+            - name: facility
+              value: "Math.floor(__inputId.priority / 8)"
+            - name: severity_num
+              value: "__inputId.priority % 8"
+
+      # Add severity name
+      - id: eval_severity
+        filter: "true"
+        conf:
+          add:
+            - name: severity
+              value: |
+                const severities = ['emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug'];
+                severities[severity_num] || 'unknown'
+
+      # Add facility name
+      - id: eval_facility
+        filter: "true"
+        conf:
+          add:
+            - name: facility_name
+              value: |
+                const facilities = ['kernel', 'user', 'mail', 'system', 'security', 'syslog', 'printer', 'news',
+                                   'uucp', 'clock', 'security2', 'ftp', 'ntp', 'audit', 'alert', 'clock2',
+                                   'local0', 'local1', 'local2', 'local3', 'local4', 'local5', 'local6', 'local7'];
+                facilities[facility] || 'unknown'
+
+      # Extract temperature data
+      - id: regex_extract_temp
+        filter: "message.match(/temperature/i)"
+        conf:
+          source: message
+          iterations: 100
+          regex: /(?:Current:|Temperature:)\s*(\d+(?:\.\d+)?)°F/i
+          results:
+            - name: temperature
+              value: "$1"
+
+      # Extract setpoint data
+      - id: regex_extract_setpoint
+        filter: "message.match(/setpoint/i)"
+        conf:
+          source: message
+          iterations: 100
+          regex: /Setpoint:\s*(\d+(?:\.\d+)?)°F/i
+          results:
+            - name: setpoint
+              value: "$1"
+
+      # Extract PID values
+      - id: regex_extract_pid
+        filter: "message.match(/PID/i)"
+        conf:
+          source: message
+          iterations: 100
+          regex: /P=(-?\d+(?:\.\d+)?),?\s*I=(-?\d+(?:\.\d+)?),?\s*D=(-?\d+(?:\.\d+)?),?\s*Output=(-?\d+(?:\.\d+)?)/i
+          results:
+            - name: pid_p
+              value: "$1"
+            - name: pid_i
+              value: "$2"
+            - name: pid_d
+              value: "$3"
+            - name: pid_output
+              value: "$4"
+
+      # Extract state information
+      - id: regex_extract_state
+        filter: "message.match(/state/i)"
+        conf:
+          source: message
+          iterations: 100
+          regex: /(?:State:|Entering state:|transition:.*->)\s*(\w+)/i
+          results:
+            - name: state
+              value: "$1"
+
+      # Extract relay status
+      - id: regex_extract_relays
+        filter: "message.match(/relay|auger|fan|igniter/i)"
+        conf:
+          source: message
+          iterations: 100
+          regex: /Auger:\s*(\w+).*Fan:\s*(\w+).*Igniter:\s*(\w+)/i
+          results:
+            - name: relay_auger
+              value: "$1"
+            - name: relay_fan
+              value: "$2"
+            - name: relay_igniter
+              value: "$3"
+
+      # Add tags
+      - id: eval_tags
+        filter: "true"
+        conf:
+          add:
+            - name: tags
+              value: "['esp32', 'iot', 'syslog', appname].filter(Boolean)"
+
+      # Add log type classification
+      - id: eval_log_type
+        filter: "true"
+        conf:
+          add:
+            - name: log_type
+              value: |
+                if (temperature) return 'temperature';
+                if (pid_output) return 'pid_control';
+                if (state) return 'state_transition';
+                if (relay_auger) return 'relay_control';
+                if (severity === 'error' || severity === 'critical') return 'error';
+                return 'general'
+
+      # Clean up timestamp
+      - id: auto_timestamp
+        filter: "true"
+        conf:
+          srcField: _time
+          dstField: "@timestamp"
+
+destinations:
+  elasticsearch_output:
+    type: elasticsearch
+    streamtags: []
+    systemFields:
+      - cribl_pipe
+    host: "192.168.1.97"
+    port: 9200
+    maxPayloadSizeKB: 4096
+    maxPayloadEvents: 500
+    flushPeriodSec: 1
+    compress: gzip
+    rejectUnauthorized: false
+    enableAcking: false
+    authType: basic
+    username: elastic
+    password: N5l2MV3c
+    index: "esp32-logs-%{+YYYY.MM.dd}"
+    docType: "_doc"
+    bulkApi: v2
+    pipeline: esp32-syslog-pipeline
+    discoveryMode: disabled
+    description: "Send processed logs to Elasticsearch"
+
+  devnull:
+    type: devnull
+    streamtags: []
+    description: "Discard non-ESP32 logs"

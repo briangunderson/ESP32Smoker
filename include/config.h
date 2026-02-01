@@ -31,8 +31,8 @@
 // ============================================================================
 
 // MAX31865 RTD Configuration
-#define MAX31865_REFERENCE_RESISTANCE 4300.0  // 4300 ohms for PT1000
-#define MAX31865_RTD_RESISTANCE_AT_0  1000.0  // PT1000 = 1000 ohms at 0°C
+#define MAX31865_REFERENCE_RESISTANCE 430.0  // 4300 ohms for PT100 //was previously 4300
+#define MAX31865_RTD_RESISTANCE_AT_0  100.0   // PT100 = 100 ohms at 0°C //was previously 1000
 #define MAX31865_WIRE_MODE            3       // 3-wire RTD (most common)
 
 // Temperature Sensor Calibration
@@ -44,11 +44,32 @@
 // CONTROL CONFIGURATION
 // ============================================================================
 
-// Temperature Control Parameters (Hysteresis)
-#define TEMP_CONTROL_INTERVAL    2000  // ms between control updates
-#define TEMP_HYSTERESIS_BAND     10    // ±5°F band (±10°F total)
+// Temperature Control Parameters (PID)
+#define TEMP_CONTROL_INTERVAL    2000  // ms between PID updates
 #define TEMP_MIN_SETPOINT        150   // Minimum allowed setpoint (°F)
 #define TEMP_MAX_SETPOINT        350   // Maximum allowed setpoint (°F)
+
+// PID Configuration - Proportional Band Method (from PiSmoker)
+// This method uses negative gains with 0.5 centering for stable control
+#define PID_PROPORTIONAL_BAND    60.0  // Proportional band in °F
+#define PID_INTEGRAL_TIME        180.0 // Integral time in seconds
+#define PID_DERIVATIVE_TIME      45.0  // Derivative time in seconds
+
+// Calculated PID gains (set automatically in code):
+// Kp = -1.0 / PID_PROPORTIONAL_BAND     = -0.0167
+// Ki = Kp / PID_INTEGRAL_TIME           = -0.0000926
+// Kd = Kp * PID_DERIVATIVE_TIME         = -0.75
+
+// PID Output Limits (0.0 to 1.0 range, where 1.0 = 100%)
+#define PID_OUTPUT_MIN           0.15  // 15% minimum to keep fire alive
+#define PID_OUTPUT_MAX           1.0   // 100% maximum
+
+// Auger Cycle Time for time-proportioning control
+#define AUGER_CYCLE_TIME         20000 // ms (20 seconds - matches PiSmoker)
+
+// Temperature thresholds
+#define STARTUP_TEMP_THRESHOLD   115   // Absolute °F to transition from startup to running
+#define IGNITER_CUTOFF_TEMP      100   // Turn off igniter when temp exceeds this
 
 // Startup/Shutdown Behavior
 #define IGNITER_PREHEAT_TIME     60000 // ms to preheat igniter before starting
@@ -108,6 +129,21 @@
 #define ENABLE_SERIAL_DEBUG  true
 #define SERIAL_BAUD_RATE     115200
 #define LOG_BUFFER_SIZE      256
+
+// Syslog Configuration (Cribl/Elastic Stack)
+#define ENABLE_SYSLOG        true                    // Enable remote syslog
+#define SYSLOG_SERVER        "192.168.1.97"          // Cribl server IP
+#define SYSLOG_PORT          9543                    // Cribl syslog UDP port
+#define SYSLOG_DEVICE_NAME   "ESP32Smoker"           // Device hostname for syslog
+#define SYSLOG_APP_NAME      "smoker"                // Application name in logs
+#define SYSLOG_FACILITY      LOG_LOCAL0              // Syslog facility (local0 = 16)
+
+// Telnet Server Configuration (Remote Serial Monitor)
+#define ENABLE_TELNET        true                    // Enable telnet server
+#define TELNET_PORT          23                      // Standard telnet port
+
+// MAX31865 Verbose Debugging (logs every sensor read with resistance values)
+#define ENABLE_MAX31865_VERBOSE  true                // Enable detailed RTD debugging
 
 // ============================================================================
 // FIRMWARE METADATA

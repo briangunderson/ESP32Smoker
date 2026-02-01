@@ -1,0 +1,12 @@
+{
+  "attributes": {
+    "title": "esp32-logs-*",
+    "timeFieldName": "@timestamp",
+    "fields": "[]",
+    "fieldFormatMap": "{\"temperature\":{\"id\":\"number\",\"params\":{\"pattern\":\"0.0 °F\"}},\"setpoint\":{\"id\":\"number\",\"params\":{\"pattern\":\"0.0 °F\"}},\"pid_p\":{\"id\":\"number\",\"params\":{\"pattern\":\"0.000\"}},\"pid_i\":{\"id\":\"number\",\"params\":{\"pattern\":\"0.000\"}},\"pid_d\":{\"id\":\"number\",\"params\":{\"pattern\":\"0.000\"}},\"pid_output\":{\"id\":\"number\",\"params\":{\"pattern\":\"0.00\"}}}",
+    "runtimeFieldMap": "{}",
+    "allowNoIndex": false
+  },
+  "references": [],
+  "managed": false
+}

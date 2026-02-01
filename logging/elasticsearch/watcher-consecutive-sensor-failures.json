@@ -1,0 +1,84 @@
+{
+  "trigger": {
+    "schedule": {
+      "interval": "1m"
+    }
+  },
+  "input": {
+    "search": {
+      "request": {
+        "indices": ["esp32-logs-*"],
+        "body": {
+          "query": {
+            "bool": {
+              "must": [
+                {
+                  "query_string": {
+                    "query": "message:(*sensor*failure* OR *sensor*error* OR *read*error* OR *MAX31865*fault*)",
+                    "default_operator": "AND"
+                  }
+                },
+                {
+                  "range": {
+                    "@timestamp": {
+                      "gte": "now-5m"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "size": 10,
+          "sort": [
+            {
+              "@timestamp": {
+                "order": "desc"
+              }
+            }
+          ],
+          "aggs": {
+            "error_count": {
+              "value_count": {
+                "field": "@timestamp"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "condition": {
+    "compare": {
+      "ctx.payload.aggregations.error_count.value": {
+        "gte": 3
+      }
+    }
+  },
+  "actions": {
+    "log_error": {
+      "logging": {
+        "level": "error",
+        "text": "ESP32 Smoker has {{ctx.payload.aggregations.error_count.value}} consecutive sensor failures in the last 5 minutes! Device: {{ctx.payload.hits.hits.0._source.device_name}}"
+      }
+    },
+    "index_alert": {
+      "index": {
+        "index": "esp32-alerts",
+        "doc_id": "sensor-failures-{{ctx.execution_time}}",
+        "body": {
+          "alert_type": "consecutive_sensor_failures",
+          "timestamp": "{{ctx.execution_time}}",
+          "device_name": "{{ctx.payload.hits.hits.0._source.device_name}}",
+          "failure_count": "{{ctx.payload.aggregations.error_count.value}}",
+          "message": "{{ctx.payload.aggregations.error_count.value}} consecutive sensor read failures detected in last 5 minutes",
+          "severity": "critical",
+          "recent_errors": "{{ctx.payload.hits.hits}}"
+        }
+      }
+    }
+  },
+  "metadata": {
+    "name": "ESP32 Consecutive Sensor Failures Alert",
+    "description": "Alerts when 3 or more sensor failures occur within 5 minutes"
+  }
+}
