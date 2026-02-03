@@ -31,8 +31,8 @@
 // ============================================================================
 
 // MAX31865 RTD Configuration
-#define MAX31865_REFERENCE_RESISTANCE 430.0  // 4300 ohms for PT100 //was previously 4300
-#define MAX31865_RTD_RESISTANCE_AT_0  100.0   // PT100 = 100 ohms at 0°C //was previously 1000
+#define MAX31865_REFERENCE_RESISTANCE 4300.0  // 4300 ohms for PT100 
+#define MAX31865_RTD_RESISTANCE_AT_0  1000.0   // PT100 = 100 ohms at 0°C 
 #define MAX31865_WIRE_MODE            3       // 3-wire RTD (most common)
 
 // Temperature Sensor Calibration
