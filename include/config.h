@@ -7,32 +7,37 @@
 // PIN CONFIGURATION
 // ============================================================================
 
+// ==========================================================================
+// Adafruit Feather ESP32-S3 No PSRAM Pin Assignments
+// NOTE: GPIO 19/20 = USB (off limits), GPIO 25-27 = not on headers
+// ==========================================================================
+
 // SPI Pins for MAX31865 (RTD Temperature Sensor)
-#define PIN_SPI_MOSI    23  // GPIO 23
-#define PIN_SPI_MISO    19  // GPIO 19
-#define PIN_SPI_CLK     18  // GPIO 18
-#define PIN_MAX31865_CS 5   // GPIO 5 (Chip Select)
+#define PIN_SPI_CLK     36  // SCK header pin
+#define PIN_SPI_MOSI    35  // MO header pin
+#define PIN_SPI_MISO    37  // MI header pin
+#define PIN_MAX31865_CS 5   // D5 header pin
 
 // Relay Control Pins
-#define PIN_RELAY_AUGER   12  // GPIO 12 - Pellet Auger Motor
-#define PIN_RELAY_FAN     13  // GPIO 13 - Combustion Fan
-#define PIN_RELAY_IGNITER 14  // GPIO 14 - Hot Rod Igniter
+#define PIN_RELAY_AUGER   12  // D12 header pin
+#define PIN_RELAY_FAN     13  // D13 header pin
+#define PIN_RELAY_IGNITER 10  // D10 header pin
 
-// Optional: LED Status Indicators
-#define PIN_LED_STATUS    2   // GPIO 2 - Built-in LED
+// Status LED
+#define PIN_LED_STATUS    11  // D11 header pin
 
 // TM1638 Display Module (7-segment displays, LEDs, buttons)
-#define PIN_TM1638_STB    25  // GPIO 25 - Strobe
-#define PIN_TM1638_CLK    26  // GPIO 26 - Clock
-#define PIN_TM1638_DIO    27  // GPIO 27 - Data I/O
+#define PIN_TM1638_STB    6   // D6 header pin - Strobe
+#define PIN_TM1638_CLK    9   // D9 header pin - Clock
+#define PIN_TM1638_DIO    14  // A4 header pin - Data I/O
 
 // ============================================================================
 // SENSOR CONFIGURATION
 // ============================================================================
 
 // MAX31865 RTD Configuration
-#define MAX31865_REFERENCE_RESISTANCE 4300.0  // 4300 ohms for PT100 
-#define MAX31865_RTD_RESISTANCE_AT_0  1000.0   // PT100 = 100 ohms at 0°C 
+#define MAX31865_REFERENCE_RESISTANCE 430.0   // 430 ohm reference resistor (SMD code "4300" = 430×10^0)
+#define MAX31865_RTD_RESISTANCE_AT_0  100.0   // PT100 = 100 ohms at 0°C
 #define MAX31865_WIRE_MODE            3       // 3-wire RTD (most common)
 
 // Temperature Sensor Calibration
@@ -142,8 +147,12 @@
 #define ENABLE_TELNET        true                    // Enable telnet server
 #define TELNET_PORT          23                      // Standard telnet port
 
+// TUI Server Configuration (Real-time Status Interface)
+#define ENABLE_TUI           false                   // Enable TUI telnet server (DISABLED - debugging)
+#define TUI_PORT             2323                    // TUI telnet port
+
 // MAX31865 Verbose Debugging (logs every sensor read with resistance values)
-#define ENABLE_MAX31865_VERBOSE  true                // Enable detailed RTD debugging
+#define ENABLE_MAX31865_VERBOSE  false               // Disable to reduce Serial load
 
 // ============================================================================
 // FIRMWARE METADATA

@@ -1,6 +1,6 @@
 #include "web_server.h"
 #include "config.h"
-#include <LittleFS.h>
+#include "web_content.h"
 
 WebServer::WebServer(TemperatureController* controller, uint16_t port)
     : _server(port), _controller(controller), _port(port), _running(false) {}
@@ -36,8 +36,19 @@ void WebServer::notifyClients(const String& message) {
 }
 
 void WebServer::setupRoutes() {
-  // Serve static files from LittleFS
-  _server.serveStatic("/", LittleFS, "/www/").setDefaultFile("index.html");
+  // Serve web interface from PROGMEM (no filesystem needed)
+  _server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send_P(200, "text/html", web_index_html);
+  });
+  _server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send_P(200, "text/html", web_index_html);
+  });
+  _server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send_P(200, "text/css", web_style_css);
+  });
+  _server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send_P(200, "application/javascript", web_script_js);
+  });
 
   // API: Get current status
   _server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
@@ -162,6 +173,13 @@ void WebServer::setupRoutes() {
   _server.on("/api/debug/temp", HTTP_DELETE,
              [this](AsyncWebServerRequest* request) {
                _controller->clearTempOverride();
+               request->send(200, "application/json", "{\"ok\":true}");
+             });
+
+  // Debug API: Reset error state back to idle
+  _server.on("/api/debug/reset", HTTP_POST,
+             [this](AsyncWebServerRequest* request) {
+               _controller->resetError();
                request->send(200, "application/json", "{\"ok\":true}");
              });
 

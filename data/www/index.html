@@ -3,181 +3,151 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 Smoker Controller</title>
+    <title>ESP32 Smoker</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
         <header class="header">
-            <h1>🔥 Wood Pellet Smoker</h1>
-            <div class="status-indicator">
-                <span id="wifi-status" class="status-icon">●</span>
-                <span id="mqtt-status" class="status-icon">●</span>
-                <span id="sensor-status" class="status-icon">●</span>
+            <div class="header-left">
+                <h1>Wood Pellet Smoker</h1>
+                <div class="connection-bar">
+                    <span class="conn-dot" id="conn-wifi" title="WiFi"></span>
+                    <span class="conn-label" id="conn-wifi-label">WiFi</span>
+                    <span class="conn-dot" id="conn-api" title="API"></span>
+                    <span class="conn-label" id="conn-api-label">API</span>
+                </div>
             </div>
+            <div class="state-badge" id="state-badge">Idle</div>
         </header>
 
-        <!-- Main Control Panel -->
-        <main class="main-content">
-            <!-- Temperature Display -->
-            <section class="temperature-card">
-                <div class="temperature-display">
-                    <div class="current-temp">
-                        <span class="value" id="current-temp">--</span>
-                        <span class="unit">°F</span>
+        <main>
+            <!-- Temperature Hero -->
+            <section class="temp-hero">
+                <div class="temp-block temp-current">
+                    <div class="temp-ring" id="temp-ring">
+                        <svg viewBox="0 0 120 120">
+                            <circle class="ring-bg" cx="60" cy="60" r="52" />
+                            <circle class="ring-fill" id="ring-fill" cx="60" cy="60" r="52" />
+                        </svg>
+                        <div class="temp-value">
+                            <span id="current-temp">--</span>
+                            <span class="temp-unit">°F</span>
+                        </div>
                     </div>
-                    <div class="temp-label">Current Temperature</div>
+                    <div class="temp-label">Current</div>
                 </div>
-
-                <div class="setpoint-display">
-                    <div class="setpoint-temp">
-                        <span class="value" id="setpoint-temp">225</span>
-                        <span class="unit">°F</span>
+                <div class="temp-block temp-target">
+                    <div class="temp-ring target">
+                        <svg viewBox="0 0 120 120">
+                            <circle class="ring-bg" cx="60" cy="60" r="52" />
+                        </svg>
+                        <div class="temp-value">
+                            <span id="setpoint-temp">225</span>
+                            <span class="temp-unit">°F</span>
+                        </div>
                     </div>
-                    <div class="temp-label">Target Temperature</div>
-                </div>
-            </section>
-
-            <!-- Control Buttons -->
-            <section class="control-section">
-                <div class="control-group">
-                    <button id="btn-start" class="btn btn-primary" onclick="startSmoking()">
-                        <span class="btn-icon">▶</span>
-                        <span class="btn-text">Start</span>
-                    </button>
-                    <button id="btn-stop" class="btn btn-secondary" onclick="stopSmoking()" disabled>
-                        <span class="btn-icon">⏹</span>
-                        <span class="btn-text">Stop</span>
-                    </button>
-                    <button id="btn-shutdown" class="btn btn-danger" onclick="shutdown()">
-                        <span class="btn-icon">⏻</span>
-                        <span class="btn-text">Shutdown</span>
-                    </button>
-                </div>
-
-                <!-- Temperature Adjustment -->
-                <div class="setpoint-control">
-                    <label for="setpoint-input">Target Temperature:</label>
-                    <div class="setpoint-input-container">
-                        <button class="btn-setpoint-adjust" onclick="decrementSetpoint()">−</button>
-                        <input type="number" id="setpoint-input" min="150" max="350" value="225" step="5">
-                        <button class="btn-setpoint-adjust" onclick="incrementSetpoint()">+</button>
-                        <span class="setpoint-unit">°F</span>
-                        <button class="btn btn-secondary btn-apply-setpoint" onclick="applySetpoint()">Apply</button>
-                    </div>
+                    <div class="temp-label">Target</div>
                 </div>
             </section>
 
-            <!-- State Display -->
-            <section class="state-card">
-                <h3>System State</h3>
-                <div class="state-display" id="state-display">Idle</div>
-                <div class="runtime" id="runtime">Runtime: 0m 0s</div>
-            </section>
-
-            <!-- Relay Status -->
-            <section class="relay-card">
-                <h3>Relay Status</h3>
-                <div class="relay-grid">
-                    <div class="relay-item">
-                        <div class="relay-name">Auger</div>
-                        <div class="relay-status" id="relay-auger">OFF</div>
-                    </div>
-                    <div class="relay-item">
-                        <div class="relay-name">Fan</div>
-                        <div class="relay-status" id="relay-fan">OFF</div>
-                    </div>
-                    <div class="relay-item">
-                        <div class="relay-name">Igniter</div>
-                        <div class="relay-status" id="relay-igniter">OFF</div>
-                    </div>
+            <!-- Controls -->
+            <section class="card controls-card">
+                <div class="control-row">
+                    <button id="btn-start" class="btn btn-start" onclick="startSmoking()">Start</button>
+                    <button id="btn-stop" class="btn btn-stop" onclick="stopSmoking()" disabled>Stop</button>
+                    <button id="btn-shutdown" class="btn btn-shutdown" onclick="doShutdown()">Shutdown</button>
+                </div>
+                <div class="setpoint-row">
+                    <button class="btn-adj" onclick="adjSetpoint(-5)">-</button>
+                    <input type="number" id="setpoint-input" min="150" max="350" value="225" step="5">
+                    <span class="sp-unit">°F</span>
+                    <button class="btn-adj" onclick="adjSetpoint(5)">+</button>
+                    <button class="btn btn-apply" onclick="applySetpoint()">Set</button>
                 </div>
             </section>
 
-            <!-- System Info -->
-            <section class="info-card">
-                <h3>System Information</h3>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <span class="info-label">WiFi Status:</span>
-                        <span class="info-value" id="wifi-info">Connecting...</span>
+            <!-- Relays & Info Row -->
+            <div class="info-row">
+                <section class="card relay-card">
+                    <h3>Relays</h3>
+                    <div class="relay-grid">
+                        <div class="relay" id="relay-auger">
+                            <div class="relay-led"></div>
+                            <span>Auger</span>
+                        </div>
+                        <div class="relay" id="relay-fan">
+                            <div class="relay-led"></div>
+                            <span>Fan</span>
+                        </div>
+                        <div class="relay" id="relay-igniter">
+                            <div class="relay-led"></div>
+                            <span>Igniter</span>
+                        </div>
                     </div>
-                    <div class="info-item">
-                        <span class="info-label">MQTT Status:</span>
-                        <span class="info-value" id="mqtt-info">Offline</span>
+                </section>
+                <section class="card info-card">
+                    <h3>Info</h3>
+                    <div class="info-list">
+                        <div class="info-row-item">
+                            <span>Runtime</span><span id="runtime">0:00</span>
+                        </div>
+                        <div class="info-row-item">
+                            <span>Errors</span><span id="error-count">0</span>
+                        </div>
+                        <div class="info-row-item">
+                            <span>Heap</span><span id="heap-free">--</span>
+                        </div>
                     </div>
-                    <div class="info-item">
-                        <span class="info-label">Uptime:</span>
-                        <span class="info-value" id="uptime">0h 0m</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Errors:</span>
-                        <span class="info-value" id="error-count">0</span>
-                    </div>
-                </div>
-            </section>
+                </section>
+            </div>
 
-            <!-- Debug Panel (collapsible) -->
-            <section class="debug-card">
-                <h3 onclick="toggleDebugPanel()" style="cursor: pointer;">
-                    🔧 Debug / Testing
-                    <span id="debug-toggle" style="float: right;">▼</span>
+            <!-- Debug Panel -->
+            <section class="card debug-card">
+                <h3 class="debug-header" onclick="toggleDebug()">
+                    Debug / Testing <span id="debug-arrow">&#9662;</span>
                 </h3>
-                <div id="debug-panel" class="debug-panel" style="display: none;">
-                    <div class="debug-warning">
-                        ⚠️ Warning: Debug mode disables automatic temperature control!
+                <div id="debug-panel" class="debug-panel hidden">
+                    <div class="debug-warn">Debug mode disables automatic temperature control.</div>
+                    <div class="debug-btn-row">
+                        <button id="btn-debug" class="btn btn-debug" onclick="toggleDebugMode()">Enable Debug Mode</button>
+                        <button id="btn-reset-error" class="btn btn-reset hidden" onclick="resetError()">Reset Error</button>
                     </div>
-
-                    <div class="debug-control-group">
-                        <button id="btn-debug-toggle" class="btn btn-secondary" onclick="toggleDebugMode()">
-                            Enable Debug Mode
-                        </button>
-                    </div>
-
-                    <div id="debug-controls" style="display: none;">
-                        <!-- Manual Relay Control -->
-                        <div class="debug-section">
-                            <h4>Manual Relay Control</h4>
-                            <div class="relay-control-grid">
-                                <div class="relay-control-item">
-                                    <span>Auger:</span>
-                                    <button class="btn-relay" onclick="setRelay('auger', true)">ON</button>
-                                    <button class="btn-relay" onclick="setRelay('auger', false)">OFF</button>
-                                </div>
-                                <div class="relay-control-item">
-                                    <span>Fan:</span>
-                                    <button class="btn-relay" onclick="setRelay('fan', true)">ON</button>
-                                    <button class="btn-relay" onclick="setRelay('fan', false)">OFF</button>
-                                </div>
-                                <div class="relay-control-item">
-                                    <span>Igniter:</span>
-                                    <button class="btn-relay" onclick="setRelay('igniter', true)">ON</button>
-                                    <button class="btn-relay" onclick="setRelay('igniter', false)">OFF</button>
-                                </div>
+                    <div id="debug-controls" class="hidden">
+                        <h4>Manual Relay Control</h4>
+                        <div class="relay-ctrl-grid">
+                            <div class="relay-ctrl">
+                                <span>Auger</span>
+                                <button class="btn-sm btn-on" onclick="setRelay('auger',true)">ON</button>
+                                <button class="btn-sm btn-off" onclick="setRelay('auger',false)">OFF</button>
+                            </div>
+                            <div class="relay-ctrl">
+                                <span>Fan</span>
+                                <button class="btn-sm btn-on" onclick="setRelay('fan',true)">ON</button>
+                                <button class="btn-sm btn-off" onclick="setRelay('fan',false)">OFF</button>
+                            </div>
+                            <div class="relay-ctrl">
+                                <span>Igniter</span>
+                                <button class="btn-sm btn-on" onclick="setRelay('igniter',true)">ON</button>
+                                <button class="btn-sm btn-off" onclick="setRelay('igniter',false)">OFF</button>
                             </div>
                         </div>
-
-                        <!-- Temperature Override -->
-                        <div class="debug-section">
-                            <h4>Temperature Override</h4>
-                            <div class="temp-override-control">
-                                <input type="number" id="temp-override-input" min="0" max="600"
-                                       value="225" placeholder="Temperature (°F)">
-                                <button class="btn btn-secondary" onclick="setTempOverride()">Set Override</button>
-                                <button class="btn btn-secondary" onclick="clearTempOverride()">Clear Override</button>
-                            </div>
+                        <h4>Temperature Override</h4>
+                        <div class="override-row">
+                            <input type="number" id="temp-override" min="0" max="600" value="225" placeholder="°F">
+                            <button class="btn btn-apply" onclick="setTempOverride()">Set</button>
+                            <button class="btn btn-stop" onclick="clearTempOverride()">Clear</button>
                         </div>
                     </div>
                 </div>
             </section>
         </main>
 
-        <!-- Footer -->
-        <footer class="footer">
-            <p>ESP32 Smoker Controller • Version 1.0.0</p>
-        </footer>
+        <footer>ESP32 Smoker v1.0.0</footer>
     </div>
+
+    <!-- Toast container -->
+    <div id="toasts"></div>
 
     <script src="script.js"></script>
 </body>

@@ -45,6 +45,7 @@ public:
   void setManualRelay(const char* relay, bool state);
   void setTempOverride(float temp);
   void clearTempOverride(void);
+  void resetError(void);
 
   // Status structure
   struct Status {
@@ -58,6 +59,23 @@ public:
     uint8_t errorCount;
   };
   Status getStatus(void);
+
+  // PID Status structure for detailed diagnostics
+  struct PIDStatus {
+    float proportionalTerm;
+    float integralTerm;
+    float derivativeTerm;
+    float output;
+    float error;
+    float setpoint;
+    float currentTemp;
+    float Kp;
+    float Ki;
+    float Kd;
+    uint32_t cycleTimeRemaining;
+    bool augerCycleState;
+  };
+  PIDStatus getPIDStatus(void);
 
 private:
   MAX31865* _tempSensor;

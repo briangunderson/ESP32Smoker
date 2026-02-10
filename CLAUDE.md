@@ -3,9 +3,9 @@
 ## Project Overview
 This is a complete, production-ready wood pellet smoker controller built on ESP32 with Arduino framework. It features real-time temperature control, web interface, and Home Assistant integration via MQTT.
 
-**Status**: Ready for hardware integration with PID control, OTA, and enterprise logging
-**Version**: 1.3.0 (Logging Infrastructure Added)
-**Last Build**: January 30, 2026
+**Status**: Hardware debugging in progress (MAX31865 wiring issue identified)
+**Version**: 1.4.0 (Web UI Redesign + PROGMEM Serving + Hardware Diagnostics)
+**Last Build**: February 8, 2026
 
 ## Quick Facts
 - **Platform**: ESP32 (PlatformIO + Arduino Framework)
@@ -557,9 +557,14 @@ MAX31865 is read every 100ms via SPI in `max31865.cpp`:
 - Supports 2-wire, 3-wire, or 4-wire RTD configurations (default: 3-wire)
 - Fault detection for open circuit, short circuit, etc.
 
-### Web Interface Updates
-Frontend polls `/api/status` every 2 seconds (see `script.js`)
-- To change update rate: modify `setInterval(updateStatus, 2000)` in script.js
+### Web Interface (PROGMEM Served)
+Web files are embedded in firmware via PROGMEM (see `include/web_content.h`):
+- **No filesystem required** - HTML/CSS/JS compiled into flash
+- Source files in `data/www/` are for editing; `web_content.h` is generated from them
+- After editing web files, regenerate `web_content.h` (raw string literals wrapping each file)
+- Frontend polls `/api/status` every 2 seconds
+- JS uses FormData for POST requests (matches ESPAsyncWebServer's body param parsing)
+- **Important**: The board's partition table has `ffat` (FAT) partition type, not `spiffs`. LittleFS/SPIFFS filesystem uploads via OTA will silently fail. Use PROGMEM embedding instead.
 
 ### MQTT Authentication
 MQTT broker connection uses username/password authentication:
@@ -574,7 +579,7 @@ MQTT broker connection uses username/password authentication:
 - ✅ Debug mode with manual relay control
 - ✅ Temperature override for testing
 - ✅ MQTT authentication
-- ✅ LittleFS filesystem for web interface
+- ✅ PROGMEM-embedded web interface (no filesystem dependency)
 - ✅ PID control with Proportional Band method (from PiSmoker)
 - ✅ Syslog remote logging
 
@@ -658,6 +663,35 @@ The project uses the following libraries (managed via PlatformIO):
 All dependencies are automatically installed by PlatformIO on first build.
 
 ## Recent Changes & Fixes
+
+### February 8, 2026 - Web Interface Redesign & PROGMEM Serving
+**Issue**: Web interface returned `{"error":"Not found"}` - LittleFS filesystem never uploaded
+
+**Root Cause**: The board's partition table (`partitions-8MB-tinyuf2.csv`) has an `ffat` (FAT) data partition, not a `spiffs` partition. LittleFS requires `spiffs` partition type. OTA filesystem uploads silently fail because the ESP32's `Update` library can't find a matching partition.
+
+**Solution**: Embedded web files directly in firmware using PROGMEM (`include/web_content.h`). This eliminates the filesystem dependency entirely.
+
+**Changes**:
+1. Redesigned web interface with modern dark UI, SVG temperature rings, toast notifications
+2. Fixed JS API calls to use FormData instead of JSON (matches ESPAsyncWebServer's body param parsing)
+3. Created `include/web_content.h` with PROGMEM raw string literals for HTML/CSS/JS
+4. Changed `web_server.cpp` to serve from PROGMEM via `request->send_P()` instead of filesystem
+5. Switched `main.cpp` from LittleFS to FFat (matches partition table) for any future file storage
+6. Added `runHardwareDiagnostic()` to MAX31865 driver for fault detection cycle testing
+7. Added deferred diagnostic in main loop (10s after boot) to capture output on ESP32-S3 USB CDC
+
+### February 8, 2026 - MAX31865 Hardware Diagnostic
+**Issue**: RTD ADC reads 0 across multiple MAX31865 boards and probes
+
+**Root Cause**: 3-wire RTD wiring had Force+ disconnected. Without Force+, no excitation current flows through the reference resistor or RTD.
+
+**Diagnostic Added**: `runHardwareDiagnostic()` in `max31865.cpp` runs a 7-step diagnostic:
+- SPI write/read verification (0xAA/0x55 pattern test)
+- Fault detection cycle in 3-wire and 2/4-wire modes
+- One-shot conversions in both modes
+- Wiring guide output
+
+**Key Learning**: Auto-conversion mode only checks threshold faults (D7/D6). Hardware faults (D5-D2: REFIN/RTDIN/overvoltage) require explicit fault detection cycle (D3:D2=01 in config register).
 
 ### January 29, 2026 - TM1638 Display Troubleshooting
 **Issue**: TM1638 display showing only power LED, no segments or status LEDs

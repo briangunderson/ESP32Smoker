@@ -171,11 +171,29 @@ const char* TemperatureController::getStateName(void) {
 }
 
 TemperatureController::Status TemperatureController::getStatus(void) {
-  return {_currentTemp, _setpoint, _state, 
+  return {_currentTemp, _setpoint, _state,
           _relayControl->getAuger() == RELAY_ON,
-          _relayControl->getFan() == RELAY_ON, 
+          _relayControl->getFan() == RELAY_ON,
           _relayControl->getIgniter() == RELAY_ON,
           getStateElapsedTime(), _consecutiveErrors};
+}
+
+TemperatureController::PIDStatus TemperatureController::getPIDStatus(void) {
+  // Stub implementation - returns zeros for now
+  return {
+    0.0f,  // proportionalTerm
+    0.0f,  // integralTerm
+    0.0f,  // derivativeTerm
+    0.0f,  // output
+    0.0f,  // error
+    _setpoint,
+    _currentTemp,
+    _Kp,
+    _Ki,
+    _Kd,
+    0,     // cycleTimeRemaining
+    false  // augerCycleState
+  };
 }
 
 // ============================================================================
@@ -584,5 +602,16 @@ void TemperatureController::clearTempOverride(void) {
   _tempOverrideEnabled = false;
   if (ENABLE_SERIAL_DEBUG) {
     Serial.println("[TEMP] Temperature override cleared");
+  }
+}
+
+void TemperatureController::resetError(void) {
+  if (_state == STATE_ERROR) {
+    _state = STATE_IDLE;
+    _consecutiveErrors = 0;
+    _relayControl->allOff();
+    if (ENABLE_SERIAL_DEBUG) {
+      Serial.println("[TEMP] Error state cleared - returned to IDLE");
+    }
   }
 }
