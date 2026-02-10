@@ -31,6 +31,16 @@
 #define PIN_TM1638_CLK    9   // D9 header pin - Clock
 #define PIN_TM1638_DIO    14  // A4 header pin - Data I/O
 
+// I2C Pins (STEMMA QT connector on Feather ESP32-S3)
+#define PIN_I2C_SDA           3   // GPIO3 - STEMMA QT SDA
+#define PIN_I2C_SCL           4   // GPIO4 - STEMMA QT SCL
+
+// M5Stack Unit Encoder (U135) - I2C rotary encoder with button + RGB LED
+#define ENCODER_I2C_ADDR      0x40  // Default I2C address
+#define ENCODER_POLL_INTERVAL 50    // ms between I2C reads (20 Hz)
+#define ENCODER_STEP_DEGREES  5     // °F per encoder click
+#define ENCODER_BTN_DEBOUNCE  300   // ms button debounce
+
 // ============================================================================
 // SENSOR CONFIGURATION
 // ============================================================================

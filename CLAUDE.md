@@ -3,16 +3,17 @@
 ## Project Overview
 This is a complete, production-ready wood pellet smoker controller built on ESP32 with Arduino framework. It features real-time temperature control, web interface, and Home Assistant integration via MQTT.
 
-**Status**: Hardware debugging in progress (MAX31865 wiring issue identified)
-**Version**: 1.4.0 (Web UI Redesign + PROGMEM Serving + Hardware Diagnostics)
-**Last Build**: February 8, 2026
+**Status**: Hardware working (PT1000 + 4300Ω ref on second MAX31865 board)
+**Version**: 1.5.0 (Rotary Encoder + Active-Low Relays + Sensor Diagnostic API)
+**Last Build**: February 10, 2026
 
 ## Quick Facts
 - **Platform**: ESP32 (PlatformIO + Arduino Framework)
 - **Language**: C++ for firmware, HTML/CSS/JS for web interface
-- **Temperature Sensor**: MAX31865 RTD (PT1000 probe via SPI)
+- **Temperature Sensor**: MAX31865 RTD (PT1000 probe + 4300Ω ref via SPI)
 - **Display**: TM1638 (dual 7-segment displays, 8 buttons, 8 LEDs)
-- **Control**: 3 relays (auger, fan, igniter) with safety interlocks
+- **Input**: M5Stack Unit Encoder (U135) rotary encoder via I2C (setpoint adjust + start/stop)
+- **Control**: 3 relays (auger, fan, igniter) with safety interlocks, active-low drive
 - **Connectivity**: WiFi (STA/AP modes) + Web API + MQTT
 - **Lines of Code**: ~4000 total (~1200 firmware, ~950 web UI, ~1500 docs, ~3700 logging infrastructure)
 
@@ -43,6 +44,7 @@ Only skip OTA upload if there's a technical reason preventing it:
 - `web_server.cpp` - Async HTTP server + REST API
 - `mqtt_client.cpp` - Home Assistant integration
 - `tm1638_display.cpp` - Physical display and button interface
+- `encoder.cpp` - M5Stack Unit Encoder I2C driver (rotary + button + RGB LED)
 
 ### Web Interface (data/www/)
 - `index.html` - Responsive dashboard
@@ -97,23 +99,28 @@ IDLE → STARTUP → RUNNING → COOLDOWN → SHUTDOWN → IDLE
 ### GPIO Pin Assignments (config.h)
 ```
 SPI (MAX31865):
-  CLK  = GPIO 18
-  MOSI = GPIO 23
-  MISO = GPIO 19
-  CS   = GPIO 5
+  CLK  = GPIO 36 (SCK)
+  MOSI = GPIO 35 (MO)
+  MISO = GPIO 37 (MI)
+  CS   = GPIO 5  (D5)
 
-Relays:
-  Auger   = GPIO 12
-  Fan     = GPIO 13
-  Igniter = GPIO 14
+Relays (active-low):
+  Auger   = GPIO 12 (D12)
+  Fan     = GPIO 13 (D13)
+  Igniter = GPIO 10 (D10)
 
 TM1638 Display:
-  STB  = GPIO 25 (Strobe)
-  CLK  = GPIO 26 (Clock)
-  DIO  = GPIO 27 (Data I/O)
+  STB  = GPIO 6  (D6 - Strobe)
+  CLK  = GPIO 9  (D9 - Clock)
+  DIO  = GPIO 14 (A4 - Data I/O)
+
+I2C (STEMMA QT):
+  SDA  = GPIO 3
+  SCL  = GPIO 4
+  Encoder = 0x40 (M5Stack Unit Encoder U135)
 
 Status:
-  LED = GPIO 2 (Built-in)
+  LED = GPIO 11 (D11)
 ```
 
 ## TM1638 Display & Physical Controls
@@ -205,6 +212,8 @@ Gains are auto-calculated: Kp = -1/PB = -0.0167, Ki = Kp/Ti = -0.0000926, Kd = K
 - `POST /api/debug/relay` - Manual relay control: FormData `relay=auger/fan/igniter`, `state=true/false`
 - `POST /api/debug/temp` - Set temperature override: FormData `temp=70`
 - `DELETE /api/debug/temp` - Clear temperature override, resume sensor reading
+- `GET /api/debug/sensor` - Raw MAX31865 diagnostics: ADC value, resistance, fault status, all registers
+- `POST /api/debug/reset` - Reset error state back to idle
 
 ## MQTT Topics
 
