@@ -39,6 +39,9 @@ public:
   ControllerState getState(void);
   const char* getStateName(void);
 
+  // Sensor access for diagnostics
+  MAX31865* getSensor(void) { return _tempSensor; }
+
   // Debug/Testing methods
   void setDebugMode(bool enabled);
   bool isDebugMode(void);

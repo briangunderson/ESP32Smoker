@@ -502,6 +502,23 @@ void MAX31865::runHardwareDiagnostic(void) {
   Serial.println("========================================\n");
 }
 
+MAX31865::DiagData MAX31865::getDiagnostics(void) {
+  DiagData d;
+  d.configReg = readRegister(MAX31865_CONFIG_REG);
+  d.rtdRaw = readRegister16(MAX31865_RTD_MSB);
+  d.adcValue = d.rtdRaw >> 1;
+  d.faultStatus = readRegister(MAX31865_FAULT_STATUS);
+  d.resistance = (float)d.adcValue * _refResistance / 32768.0;
+  d.tempC = rtdResistanceToTemperature(d.resistance);
+  d.tempF = d.tempC * 9.0 / 5.0 + 32.0;
+  d.refResistance = _refResistance;
+  d.rtdNominal = _rtdResistance;
+  for (int i = 0; i < 8; i++) {
+    d.registers[i] = readRegister(i);
+  }
+  return d;
+}
+
 void MAX31865::printDetailedDiagnostics(void) {
   DUAL_LOGF(LOG_INFO, "\n========================================\n");
   DUAL_LOGF(LOG_INFO, "[MAX31865] DETAILED DIAGNOSTICS\n");
