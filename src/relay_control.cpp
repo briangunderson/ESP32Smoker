@@ -14,7 +14,7 @@ RelayControl::RelayControl() {
 void RelayControl::begin() {
   for (int i = 0; i < RELAY_COUNT; i++) {
     pinMode(_pins[i], OUTPUT);
-    digitalWrite(_pins[i], LOW); // Active HIGH
+    digitalWrite(_pins[i], HIGH); // Active LOW: HIGH = off
   }
 }
 
@@ -23,7 +23,7 @@ void RelayControl::setRelay(RelayID relay, RelayState state) {
     return;
 
   _states[relay] = state;
-  digitalWrite(_pins[relay], state ? HIGH : LOW);
+  digitalWrite(_pins[relay], state ? LOW : HIGH); // Active LOW: LOW = on
 
   if (ENABLE_SERIAL_DEBUG) {
     const char* relayName[] = {"AUGER", "FAN", "IGNITER"};
