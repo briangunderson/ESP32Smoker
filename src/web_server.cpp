@@ -176,6 +176,30 @@ void WebServer::setupRoutes() {
                request->send(200, "application/json", "{\"ok\":true}");
              });
 
+  // Debug API: Raw sensor diagnostics
+  _server.on("/api/debug/sensor", HTTP_GET,
+             [this](AsyncWebServerRequest* request) {
+               auto d = _controller->getSensor()->getDiagnostics();
+               StaticJsonDocument<384> doc;
+               doc["configReg"] = String("0x") + String(d.configReg, HEX);
+               doc["rtdRaw"] = String("0x") + String(d.rtdRaw, HEX);
+               doc["adcValue"] = d.adcValue;
+               doc["faultStatus"] = String("0x") + String(d.faultStatus, HEX);
+               doc["resistance"] = d.resistance;
+               doc["tempC"] = d.tempC;
+               doc["tempF"] = d.tempF;
+               doc["refResistance"] = d.refResistance;
+               doc["rtdNominal"] = d.rtdNominal;
+               doc["faultBit"] = (bool)(d.rtdRaw & 0x01);
+               JsonArray regs = doc.createNestedArray("registers");
+               for (int r = 0; r < 8; r++) {
+                 regs.add(String("0x") + String(d.registers[r], HEX));
+               }
+               String response;
+               serializeJson(doc, response);
+               request->send(200, "application/json", response);
+             });
+
   // Debug API: Reset error state back to idle
   _server.on("/api/debug/reset", HTTP_POST,
              [this](AsyncWebServerRequest* request) {

@@ -75,6 +75,21 @@ public:
   // Run comprehensive hardware diagnostic (fault detection cycle, wire mode tests)
   void runHardwareDiagnostic(void);
 
+  // Raw diagnostic data for API exposure
+  struct DiagData {
+    uint8_t configReg;
+    uint16_t rtdRaw;      // Raw 16-bit register (includes fault bit)
+    uint16_t adcValue;     // RTD value after removing fault bit
+    uint8_t faultStatus;
+    float resistance;
+    float tempC;
+    float tempF;
+    float refResistance;
+    float rtdNominal;
+    uint8_t registers[8];  // Raw register dump [0x00..0x07]
+  };
+  DiagData getDiagnostics(void);
+
 private:
   uint8_t _chipSelectPin;
   float _refResistance;
