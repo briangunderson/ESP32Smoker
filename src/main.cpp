@@ -13,6 +13,7 @@
 #include "logger.h"
 #include "telnet_server.h"
 #include "tui_server.h"
+#include "encoder.h"
 
 // Global objects
 MAX31865* tempSensor = nullptr;
@@ -22,6 +23,7 @@ WebServer* webServer = nullptr;
 MQTTClient* mqttClient = nullptr;
 TM1638Display* display = nullptr;
 TUIServer* tuiServer = nullptr;
+Encoder* encoder = nullptr;
 
 // Helper function to log to both Serial and Syslog
 void logMessage(uint16_t priority, const char* tag, const char* format, ...) {
@@ -197,6 +199,60 @@ void handleDisplayButtons() {
 }
 
 // ============================================================================
+// ENCODER HANDLING
+// ============================================================================
+
+void handleEncoder() {
+  if (!encoder || !controller) return;
+  if (!encoder->isConnected()) return;
+
+  if (!encoder->update()) return;
+
+  // Handle rotation: adjust setpoint
+  int8_t clicks = encoder->getIncrement();
+  if (clicks != 0) {
+    float currentSetpoint = controller->getSetpoint();
+    float newSetpoint = currentSetpoint + (clicks * ENCODER_STEP_DEGREES);
+
+    if (newSetpoint > TEMP_MAX_SETPOINT) newSetpoint = TEMP_MAX_SETPOINT;
+    if (newSetpoint < TEMP_MIN_SETPOINT) newSetpoint = TEMP_MIN_SETPOINT;
+
+    if (newSetpoint != currentSetpoint) {
+      controller->setSetpoint(newSetpoint);
+      Serial.printf("[ENCODER] Setpoint changed to %.0f°F (%+d clicks)\n",
+                    newSetpoint, clicks);
+    }
+  }
+
+  // Handle button press: toggle start/stop
+  if (encoder->wasButtonPressed()) {
+    ControllerState state = controller->getState();
+    if (state == STATE_IDLE || state == STATE_SHUTDOWN) {
+      controller->startSmoking(controller->getSetpoint());
+      Serial.println("[ENCODER] Button: Starting smoker");
+    } else if (state == STATE_RUNNING || state == STATE_STARTUP) {
+      controller->stop();
+      Serial.println("[ENCODER] Button: Stopping smoker");
+    }
+  }
+
+  // Update LED color on state change
+  static ControllerState lastLedState = STATE_IDLE;
+  ControllerState currentState = controller->getState();
+  if (currentState != lastLedState) {
+    lastLedState = currentState;
+    switch (currentState) {
+      case STATE_IDLE:     encoder->setLEDColor(0, 20, 0);    break;
+      case STATE_STARTUP:  encoder->setLEDColor(40, 20, 0);   break;
+      case STATE_RUNNING:  encoder->setLEDColor(0, 60, 0);    break;
+      case STATE_COOLDOWN: encoder->setLEDColor(0, 0, 40);    break;
+      case STATE_SHUTDOWN: encoder->setLEDColor(10, 10, 10);  break;
+      case STATE_ERROR:    encoder->setLEDColor(60, 0, 0);    break;
+    }
+  }
+}
+
+// ============================================================================
 // OTA FUNCTIONS
 // ============================================================================
 
@@ -290,6 +346,12 @@ void setup() {
   display = new TM1638Display();
   display->begin();
   Serial.println("[SETUP] TM1638 display initialized");
+
+  // Rotary Encoder (M5Stack Unit Encoder U135)
+  encoder = new Encoder();
+  if (!encoder->begin()) {
+    Serial.println("[SETUP] WARNING: Encoder not found on I2C bus");
+  }
 
   // Initialize WiFi
   initializeWiFi();
@@ -396,6 +458,9 @@ void loop() {
     // Handle button presses
     handleDisplayButtons();
   }
+
+  // Handle rotary encoder input
+  handleEncoder();
 
   // Built-in LED heartbeat
   static unsigned long lastBuiltinBlink = 0;
