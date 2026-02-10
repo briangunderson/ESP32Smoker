@@ -1,0 +1,8 @@
+# ESP-IDF Partition Table - Custom for ESP32 Smoker (8MB flash, TinyUF2, LittleFS)
+# Name,   Type, SubType, Offset,   Size,    Flags
+nvs,      data, nvs,     0x9000,   20K,
+otadata,  data, ota,     0xe000,   8K,
+ota_0,    0,    ota_0,   0x10000,  2048K,
+ota_1,    0,    ota_1,   0x210000, 2048K,
+uf2,      app,  factory, 0x410000, 256K,
+spiffs,   data, spiffs,  0x450000, 3776K,

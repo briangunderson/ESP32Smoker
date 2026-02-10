@@ -72,6 +72,9 @@ public:
   // Print detailed diagnostics (all registers, resistance, calculations)
   void printDetailedDiagnostics(void);
 
+  // Run comprehensive hardware diagnostic (fault detection cycle, wire mode tests)
+  void runHardwareDiagnostic(void);
+
 private:
   uint8_t _chipSelectPin;
   float _refResistance;

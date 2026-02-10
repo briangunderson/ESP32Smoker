@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ArduinoOTA.h>
-#include <LittleFS.h>
+#include <FFat.h>
 #include <ArduinoJson.h>
 #include "config.h"
 #include "max31865.h"
@@ -12,6 +12,7 @@
 #include "tm1638_display.h"
 #include "logger.h"
 #include "telnet_server.h"
+#include "tui_server.h"
 
 // Global objects
 MAX31865* tempSensor = nullptr;
@@ -20,6 +21,7 @@ TemperatureController* controller = nullptr;
 WebServer* webServer = nullptr;
 MQTTClient* mqttClient = nullptr;
 TM1638Display* display = nullptr;
+TUIServer* tuiServer = nullptr;
 
 // Helper function to log to both Serial and Syslog
 void logMessage(uint16_t priority, const char* tag, const char* format, ...) {
@@ -115,11 +117,18 @@ void checkWiFiConnection() {
 // ============================================================================
 
 void initializeFileSystem() {
-  if (!LittleFS.begin()) {
-    Serial.println("[FS] Failed to initialize file system");
-    // Create default www directory structure
+  if (!FFat.begin(true)) {  // true = format on fail
+    Serial.println("[FS] Failed to initialize FFat file system");
   } else {
-    Serial.println("[FS] File system initialized");
+    Serial.printf("[FS] FFat initialized - %u KB used / %u KB total\n",
+                  FFat.usedBytes() / 1024, FFat.totalBytes() / 1024);
+    // List files for debugging
+    File root = FFat.open("/");
+    File f = root.openNextFile();
+    while (f) {
+      Serial.printf("[FS]   %s (%d bytes)\n", f.path(), f.size());
+      f = root.openNextFile();
+    }
   }
 }
 
@@ -238,7 +247,13 @@ void initializeOTA() {
 void setup() {
   // Initialize Serial
   Serial.begin(SERIAL_BAUD_RATE);
-  delay(1000);
+  // ESP32-S3 native USB CDC: prevent indefinite blocking on full TX buffer.
+  // 100ms is safe (WDT is 5s) and avoids silent data loss from timeout=0.
+  Serial.setTxTimeoutMs(100);
+  // Wait for USB CDC connection (up to 5 seconds) so boot messages are captured
+  unsigned long serialWait = millis();
+  while (!Serial && millis() - serialWait < 5000) delay(10);
+  delay(500); // Extra settle time after USB enumerates
 
   Serial.println("\n\n========================================");
   Serial.println("  ESP32 Wood Pellet Smoker Controller");
@@ -285,6 +300,13 @@ void setup() {
   // Initialize Telnet Server (after WiFi)
   telnetServer.begin();
 
+  // Initialize TUI Server (after WiFi)
+  if (ENABLE_TUI) {
+    tuiServer = new TUIServer(controller, tempSensor);
+    tuiServer->begin(TUI_PORT);
+    Serial.printf("[SETUP] TUI server started on port %d\n", TUI_PORT);
+  }
+
   // Initialize OTA updates
   initializeOTA();
 
@@ -311,11 +333,27 @@ void setup() {
 // ============================================================================
 
 void loop() {
+  // Run MAX31865 hardware diagnostic once, 10 seconds after boot (USB CDC is connected by then)
+  static bool diagRan = false;
+  if (!diagRan && millis() > 10000 && tempSensor) {
+    diagRan = true;
+    Serial.println("\n*** RUNNING DEFERRED MAX31865 HARDWARE DIAGNOSTIC ***");
+    tempSensor->runHardwareDiagnostic();
+    // Re-initialize sensor for normal operation after diagnostic
+    Serial.println("*** RE-INITIALIZING MAX31865 FOR NORMAL OPERATION ***");
+    tempSensor->begin(MAX31865::THREE_WIRE);
+  }
+
   // Handle OTA updates
   ArduinoOTA.handle();
 
   // Handle telnet server
   telnetServer.loop();
+
+  // Handle TUI server
+  if (tuiServer) {
+    tuiServer->update();
+  }
 
   // Update temperature control loop
   controller->update();
@@ -376,11 +414,12 @@ void loop() {
       auto status = controller->getStatus();
       Serial.printf(
           "[STATUS] Temp: %.1f°F | Setpoint: %.1f°F | State: %s | "
-          "Auger: %s | Fan: %s | MQTT: %s\n",
+          "Auger: %s | Fan: %s | MQTT: %s | Heap: %u/%u\n",
           status.currentTemp, status.setpoint,
           controller->getStateName(), status.auger ? "ON" : "OFF",
           status.fan ? "ON" : "OFF",
-          mqttClient->isConnected() ? "Connected" : "Offline");
+          mqttClient->isConnected() ? "Connected" : "Offline",
+          ESP.getFreeHeap(), ESP.getMinFreeHeap());
 
       // Also send to syslog
       logMessage(LOG_INFO, "STATUS",

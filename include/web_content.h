@@ -1,0 +1,593 @@
+#ifndef WEB_CONTENT_H
+#define WEB_CONTENT_H
+
+#include <Arduino.h>
+
+const char web_index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Smoker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-left">
+                <h1>Wood Pellet Smoker</h1>
+                <div class="connection-bar">
+                    <span class="conn-dot" id="conn-wifi" title="WiFi"></span>
+                    <span class="conn-label" id="conn-wifi-label">WiFi</span>
+                    <span class="conn-dot" id="conn-api" title="API"></span>
+                    <span class="conn-label" id="conn-api-label">API</span>
+                </div>
+            </div>
+            <div class="state-badge" id="state-badge">Idle</div>
+        </header>
+
+        <main>
+            <!-- Temperature Hero -->
+            <section class="temp-hero">
+                <div class="temp-block temp-current">
+                    <div class="temp-ring" id="temp-ring">
+                        <svg viewBox="0 0 120 120">
+                            <circle class="ring-bg" cx="60" cy="60" r="52" />
+                            <circle class="ring-fill" id="ring-fill" cx="60" cy="60" r="52" />
+                        </svg>
+                        <div class="temp-value">
+                            <span id="current-temp">--</span>
+                            <span class="temp-unit">°F</span>
+                        </div>
+                    </div>
+                    <div class="temp-label">Current</div>
+                </div>
+                <div class="temp-block temp-target">
+                    <div class="temp-ring target">
+                        <svg viewBox="0 0 120 120">
+                            <circle class="ring-bg" cx="60" cy="60" r="52" />
+                        </svg>
+                        <div class="temp-value">
+                            <span id="setpoint-temp">225</span>
+                            <span class="temp-unit">°F</span>
+                        </div>
+                    </div>
+                    <div class="temp-label">Target</div>
+                </div>
+            </section>
+
+            <!-- Controls -->
+            <section class="card controls-card">
+                <div class="control-row">
+                    <button id="btn-start" class="btn btn-start" onclick="startSmoking()">Start</button>
+                    <button id="btn-stop" class="btn btn-stop" onclick="stopSmoking()" disabled>Stop</button>
+                    <button id="btn-shutdown" class="btn btn-shutdown" onclick="doShutdown()">Shutdown</button>
+                </div>
+                <div class="setpoint-row">
+                    <button class="btn-adj" onclick="adjSetpoint(-5)">-</button>
+                    <input type="number" id="setpoint-input" min="150" max="350" value="225" step="5">
+                    <span class="sp-unit">°F</span>
+                    <button class="btn-adj" onclick="adjSetpoint(5)">+</button>
+                    <button class="btn btn-apply" onclick="applySetpoint()">Set</button>
+                </div>
+            </section>
+
+            <!-- Relays & Info Row -->
+            <div class="info-row">
+                <section class="card relay-card">
+                    <h3>Relays</h3>
+                    <div class="relay-grid">
+                        <div class="relay" id="relay-auger">
+                            <div class="relay-led"></div>
+                            <span>Auger</span>
+                        </div>
+                        <div class="relay" id="relay-fan">
+                            <div class="relay-led"></div>
+                            <span>Fan</span>
+                        </div>
+                        <div class="relay" id="relay-igniter">
+                            <div class="relay-led"></div>
+                            <span>Igniter</span>
+                        </div>
+                    </div>
+                </section>
+                <section class="card info-card">
+                    <h3>Info</h3>
+                    <div class="info-list">
+                        <div class="info-row-item">
+                            <span>Runtime</span><span id="runtime">0:00</span>
+                        </div>
+                        <div class="info-row-item">
+                            <span>Errors</span><span id="error-count">0</span>
+                        </div>
+                        <div class="info-row-item">
+                            <span>Heap</span><span id="heap-free">--</span>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Debug Panel -->
+            <section class="card debug-card">
+                <h3 class="debug-header" onclick="toggleDebug()">
+                    Debug / Testing <span id="debug-arrow">&#9662;</span>
+                </h3>
+                <div id="debug-panel" class="debug-panel hidden">
+                    <div class="debug-warn">Debug mode disables automatic temperature control.</div>
+                    <div class="debug-btn-row">
+                        <button id="btn-debug" class="btn btn-debug" onclick="toggleDebugMode()">Enable Debug Mode</button>
+                        <button id="btn-reset-error" class="btn btn-reset hidden" onclick="resetError()">Reset Error</button>
+                    </div>
+                    <div id="debug-controls" class="hidden">
+                        <h4>Manual Relay Control</h4>
+                        <div class="relay-ctrl-grid">
+                            <div class="relay-ctrl">
+                                <span>Auger</span>
+                                <button class="btn-sm btn-on" onclick="setRelay('auger',true)">ON</button>
+                                <button class="btn-sm btn-off" onclick="setRelay('auger',false)">OFF</button>
+                            </div>
+                            <div class="relay-ctrl">
+                                <span>Fan</span>
+                                <button class="btn-sm btn-on" onclick="setRelay('fan',true)">ON</button>
+                                <button class="btn-sm btn-off" onclick="setRelay('fan',false)">OFF</button>
+                            </div>
+                            <div class="relay-ctrl">
+                                <span>Igniter</span>
+                                <button class="btn-sm btn-on" onclick="setRelay('igniter',true)">ON</button>
+                                <button class="btn-sm btn-off" onclick="setRelay('igniter',false)">OFF</button>
+                            </div>
+                        </div>
+                        <h4>Temperature Override</h4>
+                        <div class="override-row">
+                            <input type="number" id="temp-override" min="0" max="600" value="225" placeholder="°F">
+                            <button class="btn btn-apply" onclick="setTempOverride()">Set</button>
+                            <button class="btn btn-stop" onclick="clearTempOverride()">Clear</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>ESP32 Smoker v1.0.0</footer>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toasts"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+)rawliteral";
+
+const char web_style_css[] PROGMEM = R"rawliteral(
+/* ESP32 Smoker Controller */
+:root {
+  --fire: #ff6b35;
+  --fire-dim: #cc5529;
+  --green: #2ecc71;
+  --green-dim: #27ae60;
+  --red: #e74c3c;
+  --red-dim: #c0392b;
+  --blue: #3498db;
+  --yellow: #f1c40f;
+  --bg: #111;
+  --surface: #1e1e1e;
+  --surface2: #292929;
+  --border: #333;
+  --text: #eee;
+  --text2: #999;
+  --radius: 10px;
+}
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 600px; margin: 0 auto; padding: 0 16px 24px; }
+
+/* Header */
+.header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 20px;
+}
+.header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+.connection-bar { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.conn-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--red); display: inline-block;
+}
+.conn-dot.ok { background: var(--green); }
+.conn-label { font-size: 11px; color: var(--text2); margin-right: 8px; }
+
+/* State Badge */
+.state-badge {
+  padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1px;
+  background: var(--surface2); color: var(--text2); border: 1px solid var(--border);
+}
+.state-badge.running { background: rgba(46,204,113,.15); color: var(--green); border-color: var(--green); }
+.state-badge.startup { background: rgba(255,107,53,.15); color: var(--fire); border-color: var(--fire); }
+.state-badge.cooldown { background: rgba(52,152,219,.15); color: var(--blue); border-color: var(--blue); }
+.state-badge.error { background: rgba(231,76,60,.15); color: var(--red); border-color: var(--red); animation: pulse-badge 1.5s infinite; }
+.state-badge.shutdown { background: rgba(241,196,15,.15); color: var(--yellow); border-color: var(--yellow); }
+@keyframes pulse-badge { 0%,100%{opacity:1} 50%{opacity:.6} }
+
+/* Temperature Hero */
+.temp-hero {
+  display: flex; gap: 20px; justify-content: center;
+  margin-bottom: 20px; padding: 24px 0;
+}
+.temp-block { display: flex; flex-direction: column; align-items: center; flex: 1; }
+.temp-ring {
+  position: relative; width: 160px; height: 160px;
+  display: flex; align-items: center; justify-content: center;
+}
+.temp-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: var(--surface2); stroke-width: 6; }
+.ring-fill {
+  fill: none; stroke: var(--fire); stroke-width: 6;
+  stroke-linecap: round; stroke-dasharray: 326.7; stroke-dashoffset: 326.7;
+  transition: stroke-dashoffset 1s ease, stroke .5s;
+}
+.temp-value { position: relative; text-align: center; z-index: 1; }
+.temp-value span:first-child { font-size: 42px; font-weight: 700; color: var(--fire); }
+.temp-target .temp-value span:first-child { color: var(--text); }
+.temp-unit { font-size: 18px; color: var(--text2); }
+.temp-label {
+  margin-top: 8px; font-size: 12px; text-transform: uppercase;
+  letter-spacing: 2px; color: var(--text2);
+}
+
+/* Cards */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+}
+.card h3 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--text2); margin-bottom: 12px;
+}
+
+/* Controls */
+.control-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.btn {
+  padding: 12px; border: none; border-radius: 8px; font-size: 14px;
+  font-weight: 700; cursor: pointer; transition: all .15s;
+  text-transform: uppercase; letter-spacing: .5px;
+}
+.btn:active:not(:disabled) { transform: scale(.97); }
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+.btn-start { background: var(--green); color: #fff; }
+.btn-start:hover:not(:disabled) { background: var(--green-dim); }
+.btn-stop { background: var(--blue); color: #fff; }
+.btn-stop:hover:not(:disabled) { background: #2980b9; }
+.btn-shutdown { background: var(--red); color: #fff; }
+.btn-shutdown:hover:not(:disabled) { background: var(--red-dim); }
+.btn-apply { background: var(--fire); color: #fff; min-width: 60px; }
+.btn-apply:hover:not(:disabled) { background: var(--fire-dim); }
+.debug-btn-row { display: flex; gap: 10px; margin-bottom: 16px; }
+.btn-debug { background: var(--surface2); color: var(--yellow); border: 1px solid var(--yellow); flex: 1; }
+.btn-debug.active { background: rgba(231,76,60,.15); color: var(--red); border-color: var(--red); }
+.btn-reset { background: var(--red); color: #fff; flex: 1; animation: pulse-badge 1.5s infinite; }
+.btn-reset:hover:not(:disabled) { background: var(--red-dim); }
+
+/* Setpoint Row */
+.setpoint-row { display: flex; align-items: center; gap: 8px; }
+.btn-adj {
+  width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface2); color: var(--text); font-size: 20px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.btn-adj:hover { border-color: var(--fire); color: var(--fire); }
+#setpoint-input {
+  width: 80px; padding: 8px; text-align: center; font-size: 18px; font-weight: 700;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text); outline: none;
+}
+#setpoint-input:focus { border-color: var(--fire); }
+.sp-unit { font-size: 14px; color: var(--text2); }
+
+/* Relay & Info Row */
+.info-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.relay-grid { display: flex; gap: 8px; }
+.relay {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 10px 0; background: var(--bg); border-radius: 8px;
+}
+.relay span { font-size: 11px; text-transform: uppercase; color: var(--text2); letter-spacing: .5px; }
+.relay-led {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #333; border: 2px solid #444; transition: all .3s;
+}
+.relay.on .relay-led { background: var(--green); border-color: var(--green); box-shadow: 0 0 12px rgba(46,204,113,.5); }
+.info-list { display: flex; flex-direction: column; gap: 6px; }
+.info-row-item {
+  display: flex; justify-content: space-between; padding: 6px 10px;
+  background: var(--bg); border-radius: 6px; font-size: 13px;
+}
+.info-row-item span:first-child { color: var(--text2); }
+.info-row-item span:last-child { font-weight: 600; }
+
+/* Debug */
+.debug-card { border-color: #444; }
+.debug-card h3 { color: var(--text2); }
+.debug-header { cursor: pointer; user-select: none; display: flex; justify-content: space-between; }
+.debug-panel { margin-top: 12px; }
+.debug-panel h4 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--text2); margin: 16px 0 8px;
+}
+.debug-warn {
+  background: rgba(241,196,15,.08); border-left: 3px solid var(--yellow);
+  padding: 10px 12px; margin-bottom: 12px; font-size: 13px; color: var(--yellow);
+  border-radius: 0 6px 6px 0;
+}
+.relay-ctrl-grid { display: flex; flex-direction: column; gap: 6px; }
+.relay-ctrl {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: var(--bg); border-radius: 6px;
+}
+.relay-ctrl span { flex: 1; font-size: 13px; font-weight: 600; }
+.btn-sm {
+  padding: 6px 14px; border: none; border-radius: 6px; font-size: 12px;
+  font-weight: 700; cursor: pointer; transition: all .15s;
+}
+.btn-on { background: var(--green); color: #fff; }
+.btn-off { background: #555; color: #ccc; }
+.override-row { display: flex; gap: 8px; align-items: center; }
+.override-row input {
+  flex: 1; padding: 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--text); font-size: 14px; outline: none;
+}
+
+/* Toast */
+#toasts { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column-reverse; gap: 8px; z-index: 100; }
+.toast {
+  padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  color: #fff; animation: toast-in .3s ease; min-width: 200px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.4);
+}
+.toast.ok { background: var(--green-dim); }
+.toast.err { background: var(--red-dim); }
+.toast.info { background: #2c3e50; }
+.toast.out { animation: toast-out .3s ease forwards; }
+@keyframes toast-in { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes toast-out { to { opacity:0; transform:translateY(10px); } }
+
+.hidden { display: none !important; }
+
+/* Footer */
+footer { text-align: center; padding: 16px 0; font-size: 12px; color: #555; border-top: 1px solid var(--border); }
+
+/* Mobile */
+@media (max-width: 480px) {
+  .temp-ring { width: 130px; height: 130px; }
+  .temp-value span:first-child { font-size: 34px; }
+  .info-row { grid-template-columns: 1fr; }
+  .control-row { grid-template-columns: 1fr 1fr; }
+  .control-row .btn-shutdown { grid-column: 1 / -1; }
+}
+)rawliteral";
+
+const char web_script_js[] PROGMEM = R"rawliteral(
+/* ESP32 Smoker Controller */
+const API = '/api';
+const POLL_MS = 2000;
+let apiOk = false;
+let debugActive = false;
+
+// --- Init ---
+document.addEventListener('DOMContentLoaded', () => {
+  updateStatus();
+  setInterval(updateStatus, POLL_MS);
+});
+
+// --- Toast Notifications ---
+function toast(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || 'info');
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 300); }, 3000);
+}
+
+// --- API Helper (uses FormData - matches ESPAsyncWebServer) ---
+async function post(endpoint, params) {
+  try {
+    const fd = new FormData();
+    if (params) Object.entries(params).forEach(([k, v]) => fd.append(k, String(v)));
+    const r = await fetch(API + endpoint, { method: 'POST', body: fd });
+    if (!r.ok) throw new Error(r.status);
+    return await r.json();
+  } catch (e) {
+    console.error('API POST ' + endpoint, e);
+    toast('Request failed', 'err');
+    return null;
+  }
+}
+
+// --- Status Polling ---
+async function updateStatus() {
+  try {
+    const r = await fetch(API + '/status');
+    if (!r.ok) throw new Error(r.status);
+    const s = await r.json();
+    apiOk = true;
+    updateUI(s);
+  } catch (e) {
+    apiOk = false;
+    setConn('conn-api', false);
+  }
+}
+
+function updateUI(s) {
+  // Connection indicators
+  setConn('conn-wifi', true);
+  setConn('conn-api', true);
+
+  // Temperature
+  const temp = s.temp;
+  const sp = s.setpoint;
+  const tempEl = document.getElementById('current-temp');
+  const spEl = document.getElementById('setpoint-temp');
+
+  if (temp < -100 || temp > 1000) {
+    tempEl.textContent = '--';
+  } else {
+    tempEl.textContent = temp.toFixed(0);
+  }
+  spEl.textContent = sp.toFixed(0);
+
+  // Temperature ring (0-500°F range mapped to SVG circle)
+  const ring = document.getElementById('ring-fill');
+  const pct = Math.max(0, Math.min(1, temp / 500));
+  const circumference = 326.7;
+  ring.style.strokeDashoffset = circumference * (1 - pct);
+
+  // Ring color: blue < 150, orange 150-350, red > 350
+  if (temp < 0 || temp > 1000) {
+    ring.style.stroke = '#555';
+  } else if (temp < 150) {
+    ring.style.stroke = '#3498db';
+  } else if (temp > 400) {
+    ring.style.stroke = '#e74c3c';
+  } else {
+    ring.style.stroke = '#ff6b35';
+  }
+
+  // State badge
+  const badge = document.getElementById('state-badge');
+  const state = s.state || 'Idle';
+  badge.textContent = state;
+  badge.className = 'state-badge ' + state.toLowerCase();
+
+  // Relays
+  setRelayStat('relay-auger', s.auger);
+  setRelayStat('relay-fan', s.fan);
+  setRelayStat('relay-igniter', s.igniter);
+
+  // Info
+  if (s.runtime !== undefined) {
+    const m = Math.floor(s.runtime / 60);
+    const sec = s.runtime % 60;
+    document.getElementById('runtime').textContent = m + ':' + String(sec).padStart(2, '0');
+  }
+  document.getElementById('error-count').textContent = s.errors || 0;
+
+  // Buttons
+  const running = state !== 'Idle' && state !== 'Shutdown' && state !== 'Error';
+  document.getElementById('btn-start').disabled = running;
+  document.getElementById('btn-stop').disabled = !running;
+
+  // Show/hide reset error button
+  const resetBtn = document.getElementById('btn-reset-error');
+  if (state === 'Error') {
+    resetBtn.classList.remove('hidden');
+  } else {
+    resetBtn.classList.add('hidden');
+  }
+
+  // Sync setpoint input (only if not focused)
+  const spInput = document.getElementById('setpoint-input');
+  if (document.activeElement !== spInput) {
+    spInput.value = sp.toFixed(0);
+  }
+}
+
+function setConn(id, ok) {
+  const el = document.getElementById(id);
+  if (ok) el.classList.add('ok'); else el.classList.remove('ok');
+}
+
+function setRelayStat(id, on) {
+  const el = document.getElementById(id);
+  if (on) el.classList.add('on'); else el.classList.remove('on');
+}
+
+// --- Controls ---
+async function startSmoking() {
+  const temp = parseFloat(document.getElementById('setpoint-input').value);
+  const r = await post('/start', { temp });
+  if (r) toast('Smoker started at ' + temp + '\u00B0F', 'ok');
+}
+
+async function stopSmoking() {
+  const r = await post('/stop');
+  if (r) toast('Stopping...', 'ok');
+}
+
+async function doShutdown() {
+  if (!confirm('Shutdown the smoker?')) return;
+  const r = await post('/shutdown');
+  if (r) toast('Shutting down', 'info');
+}
+
+function adjSetpoint(delta) {
+  const el = document.getElementById('setpoint-input');
+  const v = Math.max(150, Math.min(350, parseInt(el.value) + delta));
+  el.value = v;
+}
+
+async function applySetpoint() {
+  const v = parseInt(document.getElementById('setpoint-input').value);
+  if (v < 150 || v > 350) { toast('150-350\u00B0F range', 'err'); return; }
+  const r = await post('/setpoint', { temp: v });
+  if (r) toast('Setpoint: ' + v + '\u00B0F', 'ok');
+}
+
+// --- Debug ---
+function toggleDebug() {
+  const panel = document.getElementById('debug-panel');
+  const arrow = document.getElementById('debug-arrow');
+  panel.classList.toggle('hidden');
+  arrow.innerHTML = panel.classList.contains('hidden') ? '&#9662;' : '&#9652;';
+}
+
+async function toggleDebugMode() {
+  debugActive = !debugActive;
+  const r = await post('/debug/mode', { enabled: debugActive });
+  if (!r) { debugActive = !debugActive; return; }
+  const btn = document.getElementById('btn-debug');
+  const ctrl = document.getElementById('debug-controls');
+  if (debugActive) {
+    btn.textContent = 'Disable Debug Mode';
+    btn.classList.add('active');
+    ctrl.classList.remove('hidden');
+    toast('Debug mode ON', 'info');
+  } else {
+    btn.textContent = 'Enable Debug Mode';
+    btn.classList.remove('active');
+    ctrl.classList.add('hidden');
+    toast('Debug mode OFF', 'ok');
+  }
+}
+
+async function setRelay(relay, state) {
+  await post('/debug/relay', { relay, state });
+}
+
+async function setTempOverride() {
+  const v = document.getElementById('temp-override').value;
+  const r = await post('/debug/temp', { temp: v });
+  if (r) toast('Override: ' + v + '\u00B0F', 'info');
+}
+
+async function clearTempOverride() {
+  try {
+    await fetch(API + '/debug/temp', { method: 'DELETE' });
+    toast('Override cleared', 'ok');
+  } catch (e) { toast('Failed', 'err'); }
+}
+
+async function resetError() {
+  const r = await post('/debug/reset');
+  if (r) toast('Error state cleared', 'ok');
+}
+)rawliteral";
+
+#endif // WEB_CONTENT_H
