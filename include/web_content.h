@@ -9,14 +9,14 @@ const char web_index_html[] PROGMEM = R"rawliteral(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 Smoker</title>
+    <title>GunderGrill</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <header class="header">
             <div class="header-left">
-                <h1>Wood Pellet Smoker</h1>
+                <h1>The GunderGrill v2.0</h1>
                 <div class="connection-bar">
                     <span class="conn-dot" id="conn-wifi" title="WiFi"></span>
                     <span class="conn-label" id="conn-wifi-label">WiFi</span>

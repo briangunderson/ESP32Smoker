@@ -70,7 +70,7 @@ PT1000 Probe → MAX31865 RTD pins
 **Temperature Limits:**
 ```cpp
 #define TEMP_MIN_SETPOINT 150    // Minimum
-#define TEMP_MAX_SETPOINT 350    // Maximum
+#define TEMP_MAX_SETPOINT 500    // Maximum
 ```
 
 **Hysteresis Band:**
@@ -96,7 +96,7 @@ PT1000 Probe → MAX31865 RTD pins
 Edit `config.h`:
 ```cpp
 #define TEMP_MIN_SETPOINT 175    // Min
-#define TEMP_MAX_SETPOINT 325    // Max
+#define TEMP_MAX_SETPOINT 500    // Max
 ```
 
 ### Configure WiFi
