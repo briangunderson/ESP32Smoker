@@ -9,7 +9,8 @@ TemperatureController::TemperatureController(MAX31865* tempSensor,
       _stateStartTime(0), _lastUpdate(0), _consecutiveErrors(0),
       _debugMode(false), _tempOverrideEnabled(false), _tempOverrideValue(70.0),
       _pidOutput(0.0), _integral(0.0), _previousError(0.0), _previousTemp(70.0),
-      _lastPidUpdate(0), _augerCycleStart(0), _augerCycleState(false) {
+      _lastPidUpdate(0), _augerCycleStart(0), _augerCycleState(false),
+      _lastIntegralSave(0) {
 
   // Calculate PID gains from Proportional Band parameters (PiSmoker method)
   _Kp = -1.0 / PID_PROPORTIONAL_BAND;              // = -0.0167
@@ -22,6 +23,14 @@ void TemperatureController::begin() {
   _stateStartTime = millis();
   _lastUpdate = millis();
   _relayControl->allOff();
+
+  // Open NVS namespace for persistent PID storage
+  if (ENABLE_PID_PERSISTENCE) {
+    _prefs.begin("smoker", false);  // false = read/write mode
+    if (ENABLE_SERIAL_DEBUG) {
+      Serial.println("[TEMP] NVS persistence enabled");
+    }
+  }
 
   if (ENABLE_SERIAL_DEBUG) {
     Serial.println("[TEMP] Temperature controller initialized");
@@ -55,6 +64,11 @@ void TemperatureController::update() {
 
   // Detect and log state transitions
   if (_state != _previousState) {
+    // Save integral when leaving RUNNING state (any exit path)
+    if (_previousState == STATE_RUNNING) {
+      saveIntegralToNVS();
+    }
+
     DUAL_LOGF(LOG_INFO, "\n[STATE] Transition: %s -> %s (Temp: %.1f°F)\n\n",
               stateToString(_previousState),
               stateToString(_state),
@@ -233,6 +247,10 @@ void TemperatureController::handleStartupState() {
       _state = STATE_RUNNING;
       _stateStartTime = millis();
 
+      // Restore saved integral term from NVS (if valid)
+      loadIntegralFromNVS();
+      _lastIntegralSave = millis();
+
       if (ENABLE_SERIAL_DEBUG) {
         Serial.printf("[TEMP] Startup complete - reached %.1f°F (threshold: %d°F)\n",
                       _currentTemp, STARTUP_TEMP_THRESHOLD);
@@ -372,6 +390,11 @@ void TemperatureController::updatePID() {
       Serial.printf("[PID] Temp:%.1f Set:%.1f Err:%.1f P:%.3f I:%.3f D:%.3f Out:%.2f\n",
                     _currentTemp, _setpoint, error, P, I, D, _pidOutput);
     }
+  }
+
+  // Periodic save of integral to NVS (handles unexpected power loss)
+  if (ENABLE_PID_PERSISTENCE && (now - _lastIntegralSave >= PID_SAVE_INTERVAL)) {
+    saveIntegralToNVS();
   }
 }
 
@@ -612,6 +635,50 @@ void TemperatureController::resetError(void) {
     _relayControl->allOff();
     if (ENABLE_SERIAL_DEBUG) {
       Serial.println("[TEMP] Error state cleared - returned to IDLE");
+    }
+  }
+}
+
+// ============================================================================
+// PERSISTENT INTEGRAL STORAGE (NVS)
+// ============================================================================
+
+void TemperatureController::saveIntegralToNVS() {
+  if (!ENABLE_PID_PERSISTENCE) return;
+
+  _prefs.putFloat("integral", _integral);
+  _prefs.putFloat("setpoint", _setpoint);
+  _lastIntegralSave = millis();
+
+  if (ENABLE_SERIAL_DEBUG) {
+    Serial.printf("[PID] Saved integral=%.1f setpoint=%.1f to NVS\n",
+                  _integral, _setpoint);
+  }
+}
+
+void TemperatureController::loadIntegralFromNVS() {
+  if (!ENABLE_PID_PERSISTENCE) return;
+
+  float savedIntegral = _prefs.getFloat("integral", 0.0f);
+  float savedSetpoint = _prefs.getFloat("setpoint", 0.0f);
+
+  // Validate: only restore if saved setpoint is close to current setpoint
+  float setpointDiff = abs(_setpoint - savedSetpoint);
+
+  if (savedSetpoint > 0.0f && setpointDiff <= PID_SETPOINT_TOLERANCE) {
+    _integral = savedIntegral;
+    DUAL_LOGF(LOG_INFO,
+      "[PID] Restored integral=%.1f from NVS (saved@%.0f, current@%.0f, diff=%.0f)\n",
+      savedIntegral, savedSetpoint, _setpoint, setpointDiff);
+  } else if (savedSetpoint > 0.0f) {
+    _integral = 0.0f;
+    DUAL_LOGF(LOG_INFO,
+      "[PID] Discarding saved integral (setpoint diff=%.0f > tolerance=%.0f)\n",
+      setpointDiff, PID_SETPOINT_TOLERANCE);
+  } else {
+    _integral = 0.0f;
+    if (ENABLE_SERIAL_DEBUG) {
+      Serial.println("[PID] No saved integral in NVS - starting at 0.0");
     }
   }
 }
