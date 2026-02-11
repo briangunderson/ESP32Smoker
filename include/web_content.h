@@ -473,8 +473,9 @@ function updateUI(s) {
 
   // Info
   if (s.runtime !== undefined) {
-    const m = Math.floor(s.runtime / 60);
-    const sec = s.runtime % 60;
+    const totalSec = Math.floor(s.runtime / 1000);
+    const m = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
     document.getElementById('runtime').textContent = m + ':' + String(sec).padStart(2, '0');
   }
   document.getElementById('error-count').textContent = s.errors || 0;
