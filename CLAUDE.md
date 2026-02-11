@@ -4,8 +4,8 @@
 This is a complete, production-ready wood pellet smoker controller built on ESP32 with Arduino framework. It features real-time temperature control, web interface, and Home Assistant integration via MQTT.
 
 **Status**: Hardware working (PT1000 + 4300Ω ref on second MAX31865 board)
-**Version**: 1.5.0 (Rotary Encoder + Active-Low Relays + Sensor Diagnostic API)
-**Last Build**: February 10, 2026
+**Version**: 1.6.0 (Persistent PID Integral via NVS)
+**Last Build**: February 11, 2026
 
 ## Quick Facts
 - **Platform**: ESP32 (PlatformIO + Arduino Framework)
@@ -313,6 +313,32 @@ Watch serial output for PID debugging (every 5 seconds during RUNNING):
 - **Overshoots by 10°F then slowly settles**: Increase Ti to 200 or 220
 - **Very slow response to lid opening**: Decrease PB to 50, decrease Td to 35
 
+### Persistent Integral Term (NVS)
+
+The PID integral term is saved to non-volatile storage (NVS) using the ESP32 `Preferences` library. This gives the PID a "warm start" on subsequent cooks, reaching steady-state faster.
+
+**How it works:**
+- When leaving RUNNING state (stop, cooldown, shutdown, or error), the integral value and setpoint are saved to NVS
+- During RUNNING, a periodic save occurs every 5 minutes (handles unexpected power loss)
+- When transitioning STARTUP → RUNNING, the saved integral is restored if the saved setpoint is within ±20°F of the current setpoint
+- If setpoints differ too much (e.g., saved at 225°F, now cooking at 300°F), the integral starts fresh at 0.0
+- First boot with no saved data behaves identically to before (integral = 0.0)
+
+**Configuration** (`config.h`):
+```cpp
+#define ENABLE_PID_PERSISTENCE     true     // Save/restore integral across sessions
+#define PID_SETPOINT_TOLERANCE     20.0     // °F - only restore if setpoint within this range
+#define PID_SAVE_INTERVAL          300000   // ms (5 min) - periodic save during RUNNING
+```
+
+**NVS namespace**: `"smoker"`, keys: `"integral"` (float), `"setpoint"` (float)
+
+**Serial log messages:**
+- `[PID] Restored integral=X from NVS (saved@Y, current@Z, diff=D)` — successful restore
+- `[PID] Discarding saved integral (setpoint diff=X > tolerance=Y)` — setpoint too different
+- `[PID] No saved integral in NVS - starting at 0.0` — first boot or no saved data
+- `[PID] Saved integral=X setpoint=Y to NVS` — save on state transition or periodic
+
 ## Common Customizations
 
 ### Change Default Target Temperature
@@ -593,7 +619,7 @@ MQTT broker connection uses username/password authentication:
 - ✅ Syslog remote logging
 
 ### Not Yet Implemented
-- Persistent configuration storage (settings reset on reboot)
+- Full persistent configuration storage (PID integral persists, but other settings reset on reboot)
 - Temperature history logging
 - Multiple temperature probes
 - Data charts/graphs in web UI
@@ -601,7 +627,7 @@ MQTT broker connection uses username/password authentication:
 - Lid-open detection
 
 ### Current Behavior
-- Settings reset on reboot (no persistence yet)
+- PID integral term persists across reboots (NVS); other settings reset on reboot
 - Single temperature probe only
 - Manual WiFi configuration (no captive portal)
 - Basic web UI (functional but not fancy)

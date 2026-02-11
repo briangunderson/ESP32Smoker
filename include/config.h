@@ -82,6 +82,11 @@
 // Auger Cycle Time for time-proportioning control
 #define AUGER_CYCLE_TIME         20000 // ms (20 seconds - matches PiSmoker)
 
+// Persistent PID Integral Storage (NVS)
+#define ENABLE_PID_PERSISTENCE     true     // Save/restore integral across sessions
+#define PID_SETPOINT_TOLERANCE     20.0     // °F - only restore if setpoint within this range
+#define PID_SAVE_INTERVAL          300000   // ms (5 min) - periodic save during RUNNING
+
 // Temperature thresholds
 #define STARTUP_TEMP_THRESHOLD   115   // Absolute °F to transition from startup to running
 #define IGNITER_CUTOFF_TEMP      100   // Turn off igniter when temp exceeds this
