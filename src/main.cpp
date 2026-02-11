@@ -260,8 +260,8 @@ void initializeOTA() {
   // Set OTA hostname
   ArduinoOTA.setHostname("esp32-smoker");
 
-  // Set OTA password for security
-  ArduinoOTA.setPassword("YOUR-OTA-PASSWORD");
+  // Set OTA password for security (defined in secrets.h)
+  ArduinoOTA.setPassword(OTA_PASSWORD);
 
   // Configure OTA callbacks
   ArduinoOTA.onStart([]() {
@@ -293,7 +293,7 @@ void initializeOTA() {
 
   ArduinoOTA.begin();
   Serial.println("[OTA] Over-The-Air updates enabled");
-  Serial.printf("[OTA] Hostname: esp32-smoker, Password: YOUR-OTA-PASSWORD\n");
+  Serial.println("[OTA] Over-The-Air updates configured");
 }
 
 // ============================================================================

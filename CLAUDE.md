@@ -4,7 +4,7 @@
 This is a complete, production-ready wood pellet smoker controller built on ESP32 with Arduino framework. It features real-time temperature control, web interface, and Home Assistant integration via MQTT.
 
 **Status**: Hardware working (PT1000 + 4300Ω ref on second MAX31865 board)
-**Version**: 1.6.0 (Persistent PID Integral via NVS)
+**Version**: 1.7.0 (Secrets Management + Persistent PID Integral)
 **Last Build**: February 11, 2026
 
 ## Quick Facts
@@ -34,7 +34,9 @@ Only skip OTA upload if there's a technical reason preventing it:
 ## Critical Files
 
 ### Configuration
-- `include/config.h` - **ALL configuration in one place** (pins, temps, timings, WiFi, MQTT)
+- `include/config.h` - **ALL configuration in one place** (pins, temps, timings, non-secret defaults)
+- `include/secrets.h` - **Credentials** (WiFi, MQTT, OTA, syslog IPs) — **GITIGNORED, never commit**
+- `include/secrets.h.example` - Template for secrets.h (committed, placeholder values)
 
 ### Core Firmware (src/)
 - `main.cpp` - Application entry point, initialization, main loop
@@ -350,18 +352,25 @@ Edit `config.h`: Increase `PID_PROPORTIONAL_BAND` for more stable but slower con
 ### Change GPIO Pins
 Edit `config.h`: All `PIN_*` defines at the top
 
-### WiFi Credentials
-Edit `config.h`: `WIFI_SSID` and `WIFI_PASS` (or use AP mode)
+### WiFi / MQTT / OTA / Syslog Credentials
+Edit `include/secrets.h` (copy from `secrets.h.example` if it doesn't exist):
+- `WIFI_SSID`, `WIFI_PASS` — WiFi station credentials
+- `WIFI_AP_SSID`, `WIFI_AP_PASS` — Fallback AP credentials
+- `MQTT_BROKER_HOST`, `MQTT_USERNAME`, `MQTT_PASSWORD` — MQTT broker
+- `OTA_PASSWORD` — Over-the-air update password
+- `SYSLOG_SERVER` — Remote logging server IP
 
-### MQTT Broker
-Edit `config.h`:
-- `MQTT_BROKER_HOST` and `MQTT_BROKER_PORT`
-- `MQTT_USERNAME` and `MQTT_PASSWORD` (authentication credentials)
+**Never edit credentials in `config.h`** — it's committed to git. All secrets go in `secrets.h` which is gitignored. Config.h has `#ifndef` fallbacks with placeholder values so the project compiles without `secrets.h`.
+
+For OTA uploads via PlatformIO, set the `OTA_PASSWORD` environment variable:
+```bash
+OTA_PASSWORD=your-password pio run --target upload --upload-port YOUR-DEVICE-IP
+```
 
 ### Syslog Remote Logging
-Edit `config.h`:
+Edit `secrets.h` for `SYSLOG_SERVER`, edit `config.h` for non-secret settings:
 - `ENABLE_SYSLOG` - Set to `true` to enable remote logging
-- `SYSLOG_SERVER` - IP address of syslog server (e.g., "192.168.1.11")
+- `SYSLOG_SERVER` - IP address of syslog server (set in secrets.h)
 - `SYSLOG_PORT` - UDP port (default: 514)
 - `SYSLOG_DEVICE_NAME` - Hostname shown in logs
 - `SYSLOG_APP_NAME` - Application name in logs

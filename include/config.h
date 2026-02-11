@@ -3,6 +3,11 @@
 
 #include <Arduino.h>
 
+// Include secrets (copy secrets.h.example to secrets.h and fill in your values)
+#if __has_include("secrets.h")
+  #include "secrets.h"
+#endif
+
 // ============================================================================
 // PIN CONFIGURATION
 // ============================================================================
@@ -102,13 +107,21 @@
 // NETWORK CONFIGURATION
 // ============================================================================
 
-// Wi-Fi Settings (configure in web interface for production)
-#define WIFI_SSID    "YOUR-WIFI-SSID"  // Leave empty to use AP mode or configure via web UI
-#define WIFI_PASS    "YOUR-WIFI-PASSWORD"
+// Wi-Fi Settings (set in secrets.h)
+#ifndef WIFI_SSID
+  #define WIFI_SSID    "your-wifi-ssid"
+#endif
+#ifndef WIFI_PASS
+  #define WIFI_PASS    "your-wifi-password"
+#endif
 
 // Wi-Fi AP Mode (fallback if no SSID configured)
-#define WIFI_AP_SSID "ESP32Smoker"
-#define WIFI_AP_PASS "your-ap-password"
+#ifndef WIFI_AP_SSID
+  #define WIFI_AP_SSID "ESP32Smoker"
+#endif
+#ifndef WIFI_AP_PASS
+  #define WIFI_AP_PASS "your-ap-password"
+#endif
 
 // Web Server Port
 #define WEB_SERVER_PORT 80
@@ -117,11 +130,18 @@
 // MQTT CONFIGURATION
 // ============================================================================
 
-#define MQTT_BROKER_HOST    "192.168.1.11"  // Configure via web UI
+// MQTT credentials (set in secrets.h)
+#ifndef MQTT_BROKER_HOST
+  #define MQTT_BROKER_HOST    "192.168.1.100"
+#endif
 #define MQTT_BROKER_PORT    1883
 #define MQTT_CLIENT_ID      "esp32-smoker"
-#define MQTT_USERNAME       "mqtt"
-#define MQTT_PASSWORD       "YOUR-MQTT-PASSWORD"
+#ifndef MQTT_USERNAME
+  #define MQTT_USERNAME       "your-mqtt-user"
+#endif
+#ifndef MQTT_PASSWORD
+  #define MQTT_PASSWORD       "your-mqtt-password"
+#endif
 #define MQTT_ROOT_TOPIC     "home/smoker"
 #define MQTT_RECONNECT_INTERVAL 5000  // ms
 
@@ -148,7 +168,9 @@
 
 // Syslog Configuration (Cribl/Elastic Stack)
 #define ENABLE_SYSLOG        true                    // Enable remote syslog
-#define SYSLOG_SERVER        "YOUR-LOGGING-SERVER-IP"          // Cribl server IP
+#ifndef SYSLOG_SERVER
+  #define SYSLOG_SERVER      "192.168.1.100"         // Set in secrets.h
+#endif
 #define SYSLOG_PORT          9543                    // Cribl syslog UDP port
 #define SYSLOG_DEVICE_NAME   "ESP32Smoker"           // Device hostname for syslog
 #define SYSLOG_APP_NAME      "smoker"                // Application name in logs
@@ -164,6 +186,14 @@
 
 // MAX31865 Verbose Debugging (logs every sensor read with resistance values)
 #define ENABLE_MAX31865_VERBOSE  false               // Disable to reduce Serial load
+
+// ============================================================================
+// OTA CONFIGURATION
+// ============================================================================
+
+#ifndef OTA_PASSWORD
+  #define OTA_PASSWORD       "your-ota-password"     // Set in secrets.h
+#endif
 
 // ============================================================================
 // FIRMWARE METADATA

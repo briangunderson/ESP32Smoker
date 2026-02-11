@@ -39,7 +39,9 @@ config.local.json
 wifi_credentials.json
 mqtt_config.json
 secrets.h
+include/secrets.h
 local.h
+platformio_override.ini
 
 # Serial monitoring
 *.log
