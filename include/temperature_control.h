@@ -2,6 +2,7 @@
 #define TEMPERATURE_CONTROL_H
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include "max31865.h"
 #include "relay_control.h"
 
@@ -106,6 +107,10 @@ private:
   unsigned long _augerCycleStart;
   bool _augerCycleState;
 
+  // Persistent integral storage
+  Preferences _prefs;
+  unsigned long _lastIntegralSave;
+
   // Calculated PID gains (from Proportional Band parameters)
   float _Kp;
   float _Ki;
@@ -134,6 +139,10 @@ private:
   // Utility
   unsigned long getStateElapsedTime();
   const char* stateToString(ControllerState state);
+
+  // Persistent integral storage
+  void saveIntegralToNVS();
+  void loadIntegralFromNVS();
 };
 
 #endif // TEMPERATURE_CONTROL_H
