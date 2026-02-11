@@ -62,7 +62,7 @@
 // Temperature Control Parameters (PID)
 #define TEMP_CONTROL_INTERVAL    2000  // ms between PID updates
 #define TEMP_MIN_SETPOINT        150   // Minimum allowed setpoint (°F)
-#define TEMP_MAX_SETPOINT        350   // Maximum allowed setpoint (°F)
+#define TEMP_MAX_SETPOINT        500   // Maximum allowed setpoint (°F)
 
 // PID Configuration - Proportional Band Method (from PiSmoker)
 // This method uses negative gains with 0.5 centering for stable control
@@ -70,10 +70,6 @@
 #define PID_INTEGRAL_TIME        180.0 // Integral time in seconds
 #define PID_DERIVATIVE_TIME      45.0  // Derivative time in seconds
 
-// Calculated PID gains (set automatically in code):
-// Kp = -1.0 / PID_PROPORTIONAL_BAND     = -0.0167
-// Ki = Kp / PID_INTEGRAL_TIME           = -0.0000926
-// Kd = Kp * PID_DERIVATIVE_TIME         = -0.75
 
 // PID Output Limits (0.0 to 1.0 range, where 1.0 = 100%)
 #define PID_OUTPUT_MIN           0.15  // 15% minimum to keep fire alive
@@ -98,9 +94,9 @@
 #define SHUTDOWN_COOL_TIMEOUT    300000 // ms to wait before shutdown complete
 
 // Safety Limits
-#define TEMP_MAX_SAFE            500   // Maximum safe temperature (°F)
+#define TEMP_MAX_SAFE            550   // Maximum safe temperature (°F)
 #define TEMP_MIN_SAFE            50    // Minimum safe temperature (°F)
-#define SENSOR_ERROR_THRESHOLD   3     // Max consecutive sensor errors before shutdown
+#define SENSOR_ERROR_THRESHOLD   5     // Max consecutive sensor errors before shutdown
 
 // ============================================================================
 // NETWORK CONFIGURATION
