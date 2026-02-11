@@ -118,6 +118,30 @@ void WebServer::setupRoutes() {
                }
              });
 
+  // API: Temperature history for graph
+  _server.on("/api/history", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    response->print("{\"now\":");
+    response->print(_controller->getUptime());
+    response->print(",\"samples\":[");
+    uint16_t count = _controller->getHistoryCount();
+    for (uint16_t i = 0; i < count; i++) {
+      const HistorySample& s = _controller->getHistorySampleAt(i);
+      if (i > 0) response->print(',');
+      response->printf("{\"t\":%u,\"c\":%.1f,\"s\":%.1f,\"st\":%d}",
+                        s.time, s.temp, s.setpoint, s.state);
+    }
+    response->print("],\"events\":[");
+    uint8_t ecount = _controller->getEventCount();
+    for (uint8_t i = 0; i < ecount; i++) {
+      const HistoryEvent& e = _controller->getHistoryEventAt(i);
+      if (i > 0) response->print(',');
+      response->printf("{\"t\":%u,\"st\":%d}", e.time, e.state);
+    }
+    response->print("]}");
+    request->send(response);
+  });
+
   // Debug API: Enable/disable debug mode
   _server.on("/api/debug/mode", HTTP_POST,
              [this](AsyncWebServerRequest* request) {

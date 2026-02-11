@@ -88,6 +88,11 @@
 #define PID_SETPOINT_TOLERANCE     20.0     // °F - only restore if setpoint within this range
 #define PID_SAVE_INTERVAL          300000   // ms (5 min) - periodic save during RUNNING
 
+// Temperature History (ring buffer for web graph)
+#define HISTORY_MAX_SAMPLES        360      // 1 hour at 10-second intervals
+#define HISTORY_SAMPLE_INTERVAL    10000    // ms between history samples
+#define HISTORY_MAX_EVENTS         32       // State change events to keep
+
 // Temperature thresholds
 #define STARTUP_TEMP_THRESHOLD   115   // Absolute °F to transition from startup to running
 #define IGNITER_CUTOFF_TEMP      100   // Turn off igniter when temp exceeds this
