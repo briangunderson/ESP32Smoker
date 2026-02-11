@@ -79,6 +79,25 @@ body {
   letter-spacing: 2px; color: var(--text2);
 }
 
+/* Temperature Graph */
+.graph-card { padding-bottom: 12px; }
+#temp-graph {
+  width: 100%; height: 200px;
+  display: block; border-radius: 6px;
+  background: var(--bg);
+}
+.graph-legend {
+  display: flex; gap: 16px; justify-content: center;
+  margin-top: 8px; font-size: 11px; color: var(--text2);
+}
+.legend-item { display: flex; align-items: center; gap: 4px; }
+.legend-swatch {
+  width: 14px; height: 3px; border-radius: 2px; display: inline-block;
+}
+.legend-swatch.temp { background: var(--fire); }
+.legend-swatch.setpoint { background: var(--red); opacity: .7; }
+.legend-swatch.event { background: var(--text2); opacity: .5; width: 1px; height: 10px; border-left: 1px dashed var(--text2); }
+
 /* Cards */
 .card {
   background: var(--surface); border: 1px solid var(--border);
