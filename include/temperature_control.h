@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include "config.h"
 #include "max31865.h"
 #include "relay_control.h"
 
@@ -14,6 +15,20 @@ enum ControllerState {
   STATE_COOLDOWN = 3,
   STATE_SHUTDOWN = 4,
   STATE_ERROR = 5
+};
+
+// Temperature history sample (for web graph)
+struct HistorySample {
+  uint32_t time;     // seconds since boot (millis()/1000)
+  float temp;        // current temperature °F
+  float setpoint;    // target temperature °F
+  uint8_t state;     // ControllerState enum value
+};
+
+// State change event
+struct HistoryEvent {
+  uint32_t time;     // seconds since boot
+  uint8_t state;     // new state entered
 };
 
 // PID temperature control
@@ -81,6 +96,13 @@ public:
   };
   PIDStatus getPIDStatus(void);
 
+  // History access for web graph
+  uint16_t getHistoryCount(void);
+  const HistorySample& getHistorySampleAt(uint16_t index);  // 0 = oldest
+  uint8_t getEventCount(void);
+  const HistoryEvent& getHistoryEventAt(uint8_t index);     // 0 = oldest
+  uint32_t getUptime(void);
+
 private:
   MAX31865* _tempSensor;
   RelayControl* _relayControl;
@@ -110,6 +132,17 @@ private:
   // Persistent integral storage
   Preferences _prefs;
   unsigned long _lastIntegralSave;
+
+  // Temperature history ring buffer
+  HistorySample _history[HISTORY_MAX_SAMPLES];
+  uint16_t _historyHead;       // next write position
+  uint16_t _historyCount;      // number of valid samples
+  unsigned long _lastHistorySample;
+
+  // State change event ring buffer
+  HistoryEvent _events[HISTORY_MAX_EVENTS];
+  uint8_t _eventHead;
+  uint8_t _eventCount;
 
   // Calculated PID gains (from Proportional Band parameters)
   float _Kp;
@@ -143,6 +176,10 @@ private:
   // Persistent integral storage
   void saveIntegralToNVS();
   void loadIntegralFromNVS();
+
+  // History recording
+  void recordHistorySample();
+  void recordHistoryEvent(ControllerState newState);
 };
 
 #endif // TEMPERATURE_CONTROL_H
