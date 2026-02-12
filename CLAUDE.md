@@ -4,7 +4,7 @@
 This is a complete, production-ready wood pellet smoker controller built on ESP32 with Arduino framework. It features real-time temperature control, web interface, and Home Assistant integration via MQTT.
 
 **Status**: Hardware working (PT1000 + 4300Ω ref on second MAX31865 board)
-**Version**: 1.1.0 (HTTP OTA + GunderGrill rebrand + Fast OTA toggle)
+**Version**: 1.2.0 (Deferred OTA check + graph range buttons + first GitHub release)
 **Last Build**: February 12, 2026
 **Product Name**: GunderGrill
 
