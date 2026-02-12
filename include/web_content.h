@@ -62,11 +62,10 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                 <div class="graph-header">
                     <h3>Temperature History</h3>
                     <div class="graph-range-btns" id="graph-range-btns">
-                        <button onclick="setGraphRange(300)">5m</button>
-                        <button onclick="setGraphRange(900)">15m</button>
-                        <button onclick="setGraphRange(1800)">30m</button>
-                        <button class="active" onclick="setGraphRange(3600)">1h</button>
-                        <button onclick="setGraphRange(7200)">2h</button>
+                        <button onclick="setGraphRange(3600)">1h</button>
+                        <button class="active" onclick="setGraphRange(14400)">4h</button>
+                        <button onclick="setGraphRange(28800)">8h</button>
+                        <button onclick="setGraphRange(43200)">12h</button>
                         <button onclick="setGraphRange(0)">All</button>
                     </div>
                 </div>
@@ -456,7 +455,7 @@ let graphEvents = [];    // {t, st} from backend
 let deviceNow = 0;       // device uptime (seconds) at last history fetch
 let localAtFetch = 0;    // Date.now() when history was fetched
 let graphInited = false;
-let graphRangeSec = 3600; // 0 = all data
+let graphRangeSec = 14400; // 0 = all data
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -621,8 +620,8 @@ function appendGraphPoint(s) {
       graphEvents.push({t: Math.round(estNow), st: stIdx});
     }
   }
-  // Trim to backend capacity (~3 hours)
-  var cutoff = estNow - 10860;
+  // Trim to backend capacity (~24 hours)
+  var cutoff = estNow - 86400;
   while (graphSamples.length > 1 && graphSamples[0].t < cutoff) graphSamples.shift();
   while (graphEvents.length > 0 && graphEvents[0].t < cutoff) graphEvents.shift();
   drawGraph();
@@ -633,7 +632,7 @@ function setGraphRange(sec) {
   var btns = document.querySelectorAll('#graph-range-btns button');
   btns.forEach(function(b) { b.classList.remove('active'); });
   // Find the clicked button by matching its range
-  var vals = [300, 900, 1800, 3600, 7200, 0];
+  var vals = [3600, 14400, 28800, 43200, 0];
   var idx = vals.indexOf(sec);
   if (idx >= 0 && btns[idx]) btns[idx].classList.add('active');
   drawGraph();
