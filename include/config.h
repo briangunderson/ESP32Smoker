@@ -89,7 +89,7 @@
 #define PID_SAVE_INTERVAL          300000   // ms (5 min) - periodic save during RUNNING
 
 // Temperature History (ring buffer for web graph)
-#define HISTORY_MAX_SAMPLES        360      // 1 hour at 10-second intervals
+#define HISTORY_MAX_SAMPLES        1080     // 3 hours at 10-second intervals
 #define HISTORY_SAMPLE_INTERVAL    10000    // ms between history samples
 #define HISTORY_MAX_EVENTS         32       // State change events to keep
 

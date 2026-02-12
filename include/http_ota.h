@@ -28,6 +28,11 @@ public:
   bool isUpdateRequested() const { return _updateRequested; }
   void clearUpdateRequest() { _updateRequested = false; }
 
+  // Deferred check (set by web API, executed in loop — avoids blocking HTTPS in async handler)
+  void requestCheck() { _checkRequested = true; _checkComplete = false; }
+  bool isCheckComplete() const { return _checkComplete; }
+  HttpOtaResult getLastCheckResult() const { return _lastCheckResult; }
+
   // Getters for web UI / API
   bool isUpdateAvailable() const { return _updateAvailable; }
   const String& getLatestVersion() const { return _latestVersion; }
@@ -49,6 +54,9 @@ private:
   String _lastError;
   bool _updateAvailable;
   bool _updateRequested;
+  bool _checkRequested;
+  bool _checkComplete;
+  HttpOtaResult _lastCheckResult;
   unsigned long _lastCheckTime;     // uptime in seconds when last checked
   unsigned long _lastCheckMillis;   // millis() at last check
   bool _initialized;

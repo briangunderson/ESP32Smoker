@@ -10,6 +10,7 @@ let graphEvents = [];    // {t, st} from backend
 let deviceNow = 0;       // device uptime (seconds) at last history fetch
 let localAtFetch = 0;    // Date.now() when history was fetched
 let graphInited = false;
+let graphRangeSec = 3600; // 0 = all data
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -174,11 +175,32 @@ function appendGraphPoint(s) {
       graphEvents.push({t: Math.round(estNow), st: stIdx});
     }
   }
-  // Trim to ~1 hour
-  var cutoff = estNow - 3660;
+  // Trim to backend capacity (~3 hours)
+  var cutoff = estNow - 10860;
   while (graphSamples.length > 1 && graphSamples[0].t < cutoff) graphSamples.shift();
   while (graphEvents.length > 0 && graphEvents[0].t < cutoff) graphEvents.shift();
   drawGraph();
+}
+
+function setGraphRange(sec) {
+  graphRangeSec = sec;
+  var btns = document.querySelectorAll('#graph-range-btns button');
+  btns.forEach(function(b) { b.classList.remove('active'); });
+  // Find the clicked button by matching its range
+  var vals = [300, 900, 1800, 3600, 7200, 0];
+  var idx = vals.indexOf(sec);
+  if (idx >= 0 && btns[idx]) btns[idx].classList.add('active');
+  drawGraph();
+}
+
+function getVisibleData() {
+  if (graphSamples.length === 0) return { samples: [], events: [] };
+  if (graphRangeSec === 0) return { samples: graphSamples, events: graphEvents };
+  var tMax = graphSamples[graphSamples.length - 1].t;
+  var tCut = tMax - graphRangeSec;
+  var samples = graphSamples.filter(function(p) { return p.t >= tCut; });
+  var events = graphEvents.filter(function(e) { return e.t >= tCut; });
+  return { samples: samples, events: events };
 }
 
 function drawGraph() {
@@ -197,7 +219,11 @@ function drawGraph() {
   ctx.fillStyle = '#111';
   ctx.fillRect(0, 0, W, H);
 
-  if (graphSamples.length < 2) {
+  var vis = getVisibleData();
+  var visSamples = vis.samples;
+  var visEvents = vis.events;
+
+  if (visSamples.length < 2) {
     ctx.fillStyle = '#555';
     ctx.font = '13px -apple-system, sans-serif';
     ctx.textAlign = 'center';
@@ -211,8 +237,8 @@ function drawGraph() {
   var gH = H - padT - padB;
 
   // Time range
-  var tMin = graphSamples[0].t;
-  var tMax = graphSamples[graphSamples.length - 1].t;
+  var tMax = visSamples[visSamples.length - 1].t;
+  var tMin = (graphRangeSec > 0) ? tMax - graphRangeSec : visSamples[0].t;
   if (tMax - tMin < 30) tMax = tMin + 30; // at least 30s window
 
   // Temp range (auto-scale with padding)
@@ -477,14 +503,24 @@ async function checkForUpdate() {
   toast('Checking for updates...', 'info');
   const r = await post('/update/check');
   if (!r) return;
-  if (r.result === 'update_available') {
-    toast('Update available: v' + r.latest, 'info');
-    showUpdateBanner(r.latest);
-  } else if (r.result === 'no_update') {
-    toast('Firmware is up to date (v' + r.current + ')', 'ok');
-  } else {
-    toast('Update check failed: ' + (r.error || 'unknown'), 'err');
+  // Check is deferred to main loop — poll /api/version for result
+  for (let i = 0; i < 10; i++) {
+    await new Promise(ok => setTimeout(ok, 2000));
+    try {
+      const v = await (await fetch(API + '/version')).json();
+      if (!v.checkComplete) continue;
+      if (v.checkResult === 'update_available') {
+        toast('Update available: v' + v.latest, 'info');
+        showUpdateBanner(v.latest);
+      } else if (v.checkResult === 'no_update') {
+        toast('Firmware is up to date (v' + v.current + ')', 'ok');
+      } else {
+        toast('Update check failed: ' + (v.lastError || 'unknown'), 'err');
+      }
+      return;
+    } catch (e) { /* retry */ }
   }
+  toast('Update check timed out', 'err');
 }
 
 function showUpdateBanner(version) {

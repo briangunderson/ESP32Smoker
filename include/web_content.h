@@ -895,14 +895,24 @@ async function checkForUpdate() {
   toast('Checking for updates...', 'info');
   const r = await post('/update/check');
   if (!r) return;
-  if (r.result === 'update_available') {
-    toast('Update available: v' + r.latest, 'info');
-    showUpdateBanner(r.latest);
-  } else if (r.result === 'no_update') {
-    toast('Firmware is up to date (v' + r.current + ')', 'ok');
-  } else {
-    toast('Update check failed: ' + (r.error || 'unknown'), 'err');
+  // Check is deferred to main loop — poll /api/version for result
+  for (let i = 0; i < 10; i++) {
+    await new Promise(ok => setTimeout(ok, 2000));
+    try {
+      const v = await (await fetch(API + '/version')).json();
+      if (!v.checkComplete) continue;
+      if (v.checkResult === 'update_available') {
+        toast('Update available: v' + v.latest, 'info');
+        showUpdateBanner(v.latest);
+      } else if (v.checkResult === 'no_update') {
+        toast('Firmware is up to date (v' + v.current + ')', 'ok');
+      } else {
+        toast('Update check failed: ' + (v.lastError || 'unknown'), 'err');
+      }
+      return;
+    } catch (e) { /* retry */ }
   }
+  toast('Update check timed out', 'err');
 }
 
 function showUpdateBanner(version) {
