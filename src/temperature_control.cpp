@@ -59,9 +59,11 @@ void TemperatureController::update() {
     return;
   }
 
-  // Check for temperature faults
-  if (_currentTemp <= TEMP_MIN_SAFE || _currentTemp >= TEMP_MAX_SAFE) {
-    handleTemperatureError();
+  // Check for temperature faults (only when actively operating)
+  if (_state != STATE_IDLE && _state != STATE_ERROR) {
+    if (_currentTemp <= TEMP_MIN_SAFE || _currentTemp >= TEMP_MAX_SAFE) {
+      handleTemperatureError();
+    }
   }
 
   // Detect and log state transitions
