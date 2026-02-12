@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 Smoker</title>
+    <title>GunderGrill</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <header class="header">
             <div class="header-left">
-                <h1>Wood Pellet Smoker</h1>
+                <h1>GunderGrill</h1>
                 <div class="connection-bar">
                     <span class="conn-dot" id="conn-wifi" title="WiFi"></span>
                     <span class="conn-label" id="conn-wifi-label">WiFi</span>
@@ -109,6 +109,13 @@
                         <div class="info-row-item">
                             <span>Heap</span><span id="heap-free">--</span>
                         </div>
+                        <div class="info-row-item">
+                            <span>Firmware</span><span id="fw-version">--</span>
+                        </div>
+                        <div class="info-row-item hidden" id="update-row">
+                            <span>Update</span>
+                            <span><span id="update-version"></span> <button class="btn-sm btn-on" onclick="applyUpdate()">Install</button></span>
+                        </div>
                     </div>
                 </section>
             </div>
@@ -123,6 +130,7 @@
                     <div class="debug-btn-row">
                         <button id="btn-debug" class="btn btn-debug" onclick="toggleDebugMode()">Enable Debug Mode</button>
                         <button id="btn-reset-error" class="btn btn-reset hidden" onclick="resetError()">Reset Error</button>
+                        <button class="btn btn-debug" onclick="checkForUpdate()">Check for Updates</button>
                     </div>
                     <div id="debug-controls" class="hidden">
                         <h4>Manual Relay Control</h4>
@@ -154,7 +162,7 @@
             </section>
         </main>
 
-        <footer>ESP32 Smoker v1.0.0</footer>
+        <footer>GunderGrill <span id="fw-footer-version">v1.1.0</span></footer>
     </div>
 
     <!-- Toast container -->

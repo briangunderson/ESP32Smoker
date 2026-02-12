@@ -1,6 +1,7 @@
 #include "web_server.h"
 #include "config.h"
 #include "web_content.h"
+#include "http_ota.h"
 
 WebServer::WebServer(TemperatureController* controller, uint16_t port)
     : _server(port), _controller(controller), _port(port), _running(false) {}
@@ -63,6 +64,7 @@ void WebServer::setupRoutes() {
     doc["igniter"] = status.igniter;
     doc["runtime"] = status.runtime;
     doc["errors"] = status.errorCount;
+    doc["version"] = FIRMWARE_VERSION;
 
     String response;
     serializeJson(doc, response);
@@ -230,6 +232,58 @@ void WebServer::setupRoutes() {
                _controller->resetError();
                request->send(200, "application/json", "{\"ok\":true}");
              });
+
+  // API: Firmware version and update status
+  _server.on("/api/version", HTTP_GET, [](AsyncWebServerRequest* request) {
+    StaticJsonDocument<256> doc;
+    doc["current"] = httpOTA.getCurrentVersion();
+    doc["latest"] = httpOTA.getLatestVersion();
+    doc["updateAvailable"] = httpOTA.isUpdateAvailable();
+    doc["lastCheck"] = httpOTA.getLastCheckTime();
+    doc["lastError"] = httpOTA.getLastError();
+
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  // API: Manually trigger firmware update check
+  _server.on("/api/update/check", HTTP_POST, [](AsyncWebServerRequest* request) {
+    HttpOtaResult result = httpOTA.checkForUpdate();
+
+    StaticJsonDocument<256> doc;
+    doc["current"] = httpOTA.getCurrentVersion();
+    doc["latest"] = httpOTA.getLatestVersion();
+    doc["updateAvailable"] = httpOTA.isUpdateAvailable();
+
+    switch (result) {
+      case OTA_CHECK_NO_UPDATE:        doc["result"] = "no_update"; break;
+      case OTA_CHECK_UPDATE_AVAILABLE: doc["result"] = "update_available"; break;
+      case OTA_CHECK_FAILED:           doc["result"] = "failed"; doc["error"] = httpOTA.getLastError(); break;
+      default:                         doc["result"] = "unknown"; break;
+    }
+
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  // API: Apply firmware update (deferred — executes in loop)
+  _server.on("/api/update/apply", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    if (!httpOTA.isUpdateAvailable()) {
+      request->send(400, "application/json", "{\"error\":\"No update available\"}");
+      return;
+    }
+    ControllerState state = _controller->getState();
+    if (state != STATE_IDLE && state != STATE_SHUTDOWN) {
+      request->send(409, "application/json",
+                    "{\"error\":\"Cannot update while smoker is active\"}");
+      return;
+    }
+    httpOTA.requestUpdate();
+    request->send(200, "application/json",
+                  "{\"ok\":true,\"message\":\"Update starting, device will reboot\"}");
+  });
 
   // 404 handler
   _server.onNotFound([](AsyncWebServerRequest* request) {
