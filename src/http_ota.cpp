@@ -17,6 +17,9 @@ HttpOTA::HttpOTA()
       _lastError(""),
       _updateAvailable(false),
       _updateRequested(false),
+      _checkRequested(false),
+      _checkComplete(false),
+      _lastCheckResult(OTA_CHECK_NO_UPDATE),
       _lastCheckTime(0),
       _lastCheckMillis(0),
       _initialized(false),
@@ -35,6 +38,25 @@ void HttpOTA::begin() {
 void HttpOTA::update() {
   if (!_initialized || !ENABLE_HTTP_OTA) return;
   if (WiFi.status() != WL_CONNECTED) return;
+
+  // Handle deferred manual check (triggered by web API)
+  if (_checkRequested) {
+    _checkRequested = false;
+    Serial.println("[HTTP_OTA] Manual check requested via web UI");
+    _lastCheckResult = checkForUpdate();
+    _checkComplete = true;
+    _lastCheckMillis = millis();  // Reset periodic timer
+    if (_lastCheckResult == OTA_CHECK_UPDATE_AVAILABLE) {
+      if (_safetyCheck && _safetyCheck()) {
+        Serial.println("[HTTP_OTA] Smoker is idle, proceeding with auto-update...");
+        performUpdate();
+      } else {
+        Serial.println("[HTTP_OTA] Smoker is active, deferring update");
+        logMessage(LOG_INFO, "HTTP_OTA", "Update deferred - smoker is active");
+      }
+    }
+    return;
+  }
 
   unsigned long now = millis();
 

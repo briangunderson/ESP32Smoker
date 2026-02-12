@@ -81,6 +81,23 @@ body {
 
 /* Temperature Graph */
 .graph-card { padding-bottom: 12px; }
+.graph-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
+}
+.graph-header h3 { margin-bottom: 0; }
+.graph-range-btns {
+  display: flex; gap: 4px;
+}
+.graph-range-btns button {
+  padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--text2); font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+}
+.graph-range-btns button:hover { border-color: var(--fire); color: var(--fire); }
+.graph-range-btns button.active {
+  background: var(--fire); color: #fff; border-color: var(--fire);
+}
 #temp-graph {
   width: 100%; height: 200px;
   display: block; border-radius: 6px;

@@ -53,7 +53,17 @@
 
             <!-- Temperature Graph -->
             <section class="card graph-card">
-                <h3>Temperature History</h3>
+                <div class="graph-header">
+                    <h3>Temperature History</h3>
+                    <div class="graph-range-btns" id="graph-range-btns">
+                        <button onclick="setGraphRange(300)">5m</button>
+                        <button onclick="setGraphRange(900)">15m</button>
+                        <button onclick="setGraphRange(1800)">30m</button>
+                        <button class="active" onclick="setGraphRange(3600)">1h</button>
+                        <button onclick="setGraphRange(7200)">2h</button>
+                        <button onclick="setGraphRange(0)">All</button>
+                    </div>
+                </div>
                 <canvas id="temp-graph"></canvas>
                 <div class="graph-legend">
                     <span class="legend-item"><span class="legend-swatch temp"></span>Temp</span>

@@ -235,38 +235,35 @@ void WebServer::setupRoutes() {
 
   // API: Firmware version and update status
   _server.on("/api/version", HTTP_GET, [](AsyncWebServerRequest* request) {
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<384> doc;
     doc["current"] = httpOTA.getCurrentVersion();
     doc["latest"] = httpOTA.getLatestVersion();
     doc["updateAvailable"] = httpOTA.isUpdateAvailable();
     doc["lastCheck"] = httpOTA.getLastCheckTime();
     doc["lastError"] = httpOTA.getLastError();
     doc["fastCheck"] = httpOTA.isFastCheck();
+    doc["checkComplete"] = httpOTA.isCheckComplete();
+
+    // Include last manual check result for polling
+    if (httpOTA.isCheckComplete()) {
+      HttpOtaResult r = httpOTA.getLastCheckResult();
+      switch (r) {
+        case OTA_CHECK_NO_UPDATE:        doc["checkResult"] = "no_update"; break;
+        case OTA_CHECK_UPDATE_AVAILABLE: doc["checkResult"] = "update_available"; break;
+        case OTA_CHECK_FAILED:           doc["checkResult"] = "failed"; break;
+        default:                         doc["checkResult"] = "unknown"; break;
+      }
+    }
 
     String response;
     serializeJson(doc, response);
     request->send(200, "application/json", response);
   });
 
-  // API: Manually trigger firmware update check
+  // API: Manually trigger firmware update check (deferred — executes in loop)
   _server.on("/api/update/check", HTTP_POST, [](AsyncWebServerRequest* request) {
-    HttpOtaResult result = httpOTA.checkForUpdate();
-
-    StaticJsonDocument<256> doc;
-    doc["current"] = httpOTA.getCurrentVersion();
-    doc["latest"] = httpOTA.getLatestVersion();
-    doc["updateAvailable"] = httpOTA.isUpdateAvailable();
-
-    switch (result) {
-      case OTA_CHECK_NO_UPDATE:        doc["result"] = "no_update"; break;
-      case OTA_CHECK_UPDATE_AVAILABLE: doc["result"] = "update_available"; break;
-      case OTA_CHECK_FAILED:           doc["result"] = "failed"; doc["error"] = httpOTA.getLastError(); break;
-      default:                         doc["result"] = "unknown"; break;
-    }
-
-    String response;
-    serializeJson(doc, response);
-    request->send(200, "application/json", response);
+    httpOTA.requestCheck();
+    request->send(200, "application/json", "{\"result\":\"checking\"}");
   });
 
   // API: Toggle fast OTA check interval (60s for dev/testing)
