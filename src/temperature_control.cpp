@@ -10,7 +10,9 @@ TemperatureController::TemperatureController(MAX31865* tempSensor,
       _debugMode(false), _tempOverrideEnabled(false), _tempOverrideValue(70.0),
       _pidOutput(0.0), _integral(0.0), _previousError(0.0), _previousTemp(70.0),
       _lastPidUpdate(0), _augerCycleStart(0), _augerCycleState(false),
-      _lastIntegralSave(0) {
+      _lastIntegralSave(0),
+      _historyHead(0), _historyCount(0), _lastHistorySample(0),
+      _eventHead(0), _eventCount(0) {
 
   // Calculate PID gains from Proportional Band parameters (PiSmoker method)
   _Kp = -1.0 / PID_PROPORTIONAL_BAND;              // = -0.0167
@@ -69,12 +71,18 @@ void TemperatureController::update() {
       saveIntegralToNVS();
     }
 
+    // Record state change event for history graph
+    recordHistoryEvent(_state);
+
     DUAL_LOGF(LOG_INFO, "\n[STATE] Transition: %s -> %s (Temp: %.1f°F)\n\n",
               stateToString(_previousState),
               stateToString(_state),
               _currentTemp);
     _previousState = _state;
   }
+
+  // Record history sample at configured interval
+  recordHistorySample();
 
   // Run state machine
   switch (_state) {
@@ -654,6 +662,63 @@ void TemperatureController::saveIntegralToNVS() {
     Serial.printf("[PID] Saved integral=%.1f setpoint=%.1f to NVS\n",
                   _integral, _setpoint);
   }
+}
+
+// ============================================================================
+// TEMPERATURE HISTORY (Ring Buffer for Web Graph)
+// ============================================================================
+
+void TemperatureController::recordHistorySample() {
+  unsigned long now = millis();
+  if (now - _lastHistorySample < HISTORY_SAMPLE_INTERVAL) return;
+  _lastHistorySample = now;
+
+  HistorySample& s = _history[_historyHead];
+  s.time = now / 1000;
+  s.temp = _currentTemp;
+  s.setpoint = _setpoint;
+  s.state = (uint8_t)_state;
+
+  _historyHead = (_historyHead + 1) % HISTORY_MAX_SAMPLES;
+  if (_historyCount < HISTORY_MAX_SAMPLES) _historyCount++;
+}
+
+void TemperatureController::recordHistoryEvent(ControllerState newState) {
+  HistoryEvent& e = _events[_eventHead];
+  e.time = millis() / 1000;
+  e.state = (uint8_t)newState;
+
+  _eventHead = (_eventHead + 1) % HISTORY_MAX_EVENTS;
+  if (_eventCount < HISTORY_MAX_EVENTS) _eventCount++;
+}
+
+uint16_t TemperatureController::getHistoryCount(void) {
+  return _historyCount;
+}
+
+const HistorySample& TemperatureController::getHistorySampleAt(uint16_t index) {
+  // index 0 = oldest sample
+  uint16_t start = (_historyCount < HISTORY_MAX_SAMPLES)
+                       ? 0
+                       : _historyHead;
+  uint16_t pos = (start + index) % HISTORY_MAX_SAMPLES;
+  return _history[pos];
+}
+
+uint8_t TemperatureController::getEventCount(void) {
+  return _eventCount;
+}
+
+const HistoryEvent& TemperatureController::getHistoryEventAt(uint8_t index) {
+  uint8_t start = (_eventCount < HISTORY_MAX_EVENTS)
+                      ? 0
+                      : _eventHead;
+  uint8_t pos = (start + index) % HISTORY_MAX_EVENTS;
+  return _events[pos];
+}
+
+uint32_t TemperatureController::getUptime(void) {
+  return millis() / 1000;
 }
 
 void TemperatureController::loadIntegralFromNVS() {
