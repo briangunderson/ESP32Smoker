@@ -4,8 +4,9 @@
 This is a complete, production-ready wood pellet smoker controller built on ESP32 with Arduino framework. It features real-time temperature control, web interface, and Home Assistant integration via MQTT.
 
 **Status**: Hardware working (PT1000 + 4300Ω ref on second MAX31865 board)
-**Version**: 1.7.0 (Secrets Management + Persistent PID Integral)
+**Version**: 1.1.0 (HTTP OTA + GunderGrill rebrand)
 **Last Build**: February 11, 2026
+**Product Name**: GunderGrill
 
 ## Quick Facts
 - **Platform**: ESP32 (PlatformIO + Arduino Framework)
@@ -406,6 +407,41 @@ pio run --target uploadfs --upload-port <device_ip>
 - Password: `smoker2026` (configured in upload_flags)
 - During OTA update, system automatically shuts down for safety
 
+### HTTP OTA (Pull-Based Updates from GitHub)
+The ESP32 periodically checks GitHub Releases for new firmware versions and auto-updates when idle.
+
+**How it works:**
+1. GitHub Actions builds `firmware.bin` + `version.txt` on version tags (`v*`)
+2. ESP32 fetches `version.txt` from latest release every 6 hours
+3. Compares semver with `FIRMWARE_VERSION` in config.h
+4. If newer and smoker is idle → downloads `firmware.bin` and flashes
+
+**Configuration** (`config.h`):
+```cpp
+#define ENABLE_HTTP_OTA          true
+#define HTTP_OTA_CHECK_INTERVAL  21600000UL  // 6 hours
+#define HTTP_OTA_BOOT_DELAY      60000UL     // 60s after boot
+#define HTTP_OTA_URL_BASE        "https://github.com/briangunderson/ESP32Smoker/releases/latest/download"
+```
+
+**Web UI:** "Check for Updates" button in Debug panel, firmware version in Info card
+
+**API Endpoints:**
+- `GET /api/version` — Current/latest version, update status
+- `POST /api/update/check` — Manually trigger version check
+- `POST /api/update/apply` — Install available update (smoker must be idle)
+
+**Release Workflow:**
+1. Bump `FIRMWARE_VERSION` in config.h
+2. Commit and push to main
+3. `git tag v1.x.0 && git push origin v1.x.0`
+4. GitHub Actions creates release with firmware.bin + version.txt
+5. ESP32 auto-detects within 6 hours (or use web UI)
+
+**Key files:** `include/http_ota.h`, `src/http_ota.cpp`, `.github/workflows/build.yml`
+
+**Required GitHub secrets:** `WIFI_SSID`, `WIFI_PASS`, `WIFI_AP_PASS`, `MQTT_BROKER_HOST`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `OTA_PASSWORD`, `SYSLOG_SERVER`
+
 ## Remote Logging with Syslog
 
 The system supports sending logs to a remote syslog server (RFC 5424) over UDP. This allows you to monitor the system remotely without needing a serial connection.
@@ -620,12 +656,15 @@ MQTT broker connection uses username/password authentication:
 
 ### Implemented Features
 - ✅ OTA (Over-The-Air) firmware and filesystem updates
+- ✅ HTTP OTA (Pull-based updates from GitHub Releases)
+- ✅ GitHub Actions CI/CD (build on push, release on tag)
 - ✅ Debug mode with manual relay control
 - ✅ Temperature override for testing
 - ✅ MQTT authentication
 - ✅ PROGMEM-embedded web interface (no filesystem dependency)
 - ✅ PID control with Proportional Band method (from PiSmoker)
 - ✅ Syslog remote logging
+- ✅ Temperature history graph in web UI
 
 ### Not Yet Implemented
 - Full persistent configuration storage (PID integral persists, but other settings reset on reboot)

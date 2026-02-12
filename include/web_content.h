@@ -16,7 +16,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
     <div class="container">
         <header class="header">
             <div class="header-left">
-                <h1>The GunderGrill v2.0</h1>
+                <h1>GunderGrill</h1>
                 <div class="connection-bar">
                     <span class="conn-dot" id="conn-wifi" title="WiFi"></span>
                     <span class="conn-label" id="conn-wifi-label">WiFi</span>
@@ -115,6 +115,13 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                         <div class="info-row-item">
                             <span>Heap</span><span id="heap-free">--</span>
                         </div>
+                        <div class="info-row-item">
+                            <span>Firmware</span><span id="fw-version">--</span>
+                        </div>
+                        <div class="info-row-item hidden" id="update-row">
+                            <span>Update</span>
+                            <span><span id="update-version"></span> <button class="btn-sm btn-on" onclick="applyUpdate()">Install</button></span>
+                        </div>
                     </div>
                 </section>
             </div>
@@ -129,6 +136,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                     <div class="debug-btn-row">
                         <button id="btn-debug" class="btn btn-debug" onclick="toggleDebugMode()">Enable Debug Mode</button>
                         <button id="btn-reset-error" class="btn btn-reset hidden" onclick="resetError()">Reset Error</button>
+                        <button class="btn btn-debug" onclick="checkForUpdate()">Check for Updates</button>
                     </div>
                     <div id="debug-controls" class="hidden">
                         <h4>Manual Relay Control</h4>
@@ -160,7 +168,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
             </section>
         </main>
 
-        <footer>ESP32 Smoker v1.0.0</footer>
+        <footer>GunderGrill <span id="fw-footer-version">v1.1.0</span></footer>
     </div>
 
     <!-- Toast container -->
@@ -172,7 +180,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
 )rawliteral";
 
 const char web_style_css[] PROGMEM = R"rawliteral(
-/* ESP32 Smoker Controller */
+/* GunderGrill Controller */
 :root {
   --fire: #ff6b35;
   --fire-dim: #cc5529;
@@ -342,6 +350,8 @@ body {
 }
 .info-row-item span:first-child { color: var(--text2); }
 .info-row-item span:last-child { font-weight: 600; }
+#update-version { color: var(--green); font-weight: 700; }
+#update-row .btn-sm { margin-left: 6px; padding: 3px 10px; font-size: 11px; }
 
 /* Debug */
 .debug-card { border-color: #444; }
@@ -405,7 +415,7 @@ footer { text-align: center; padding: 16px 0; font-size: 12px; color: #555; bord
 )rawliteral";
 
 const char web_script_js[] PROGMEM = R"rawliteral(
-/* ESP32 Smoker Controller */
+/* GunderGrill Controller */
 const API = '/api';
 const POLL_MS = 2000;
 let apiOk = false;
@@ -424,6 +434,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateStatus();
   setInterval(updateStatus, POLL_MS);
   window.addEventListener('resize', drawGraph);
+  checkVersionStatus();
 });
 
 // --- Toast Notifications ---
@@ -482,7 +493,7 @@ function updateUI(s) {
   }
   spEl.textContent = sp.toFixed(0);
 
-  // Temperature ring (0-500 range mapped to SVG circle)
+  // Temperature ring (0-500°F range mapped to SVG circle)
   const ring = document.getElementById('ring-fill');
   const pct = Math.max(0, Math.min(1, temp / 500));
   const circumference = 326.7;
@@ -518,6 +529,12 @@ function updateUI(s) {
     document.getElementById('runtime').textContent = m + ':' + String(sec).padStart(2, '0');
   }
   document.getElementById('error-count').textContent = s.errors || 0;
+
+  // Firmware version
+  if (s.version) {
+    document.getElementById('fw-version').textContent = 'v' + s.version;
+    document.getElementById('fw-footer-version').textContent = 'v' + s.version;
+  }
 
   // Buttons
   const running = state !== 'Idle' && state !== 'Shutdown' && state !== 'Error';
@@ -641,6 +658,8 @@ function drawGraph() {
       var n = graphSamples[i + 1];
       var x0 = tx(p.t), x1 = tx(n.t);
       var col = STATE_COLORS[p.st] || '#555';
+      ctx.fillStyle = col.replace(')', ',0.06)').replace('rgb', 'rgba').replace('#', '');
+      // Use hex alpha approach
       ctx.fillStyle = hexAlpha(col, 0.06);
       ctx.fillRect(x0, padT, x1 - x0, gH);
     }
@@ -859,6 +878,41 @@ async function resetError() {
   const r = await post('/debug/reset');
   if (r) toast('Error state cleared', 'ok');
 }
+
+// --- Firmware Updates ---
+async function checkVersionStatus() {
+  try {
+    const r = await fetch(API + '/version');
+    if (!r.ok) return;
+    const v = await r.json();
+    if (v.updateAvailable) showUpdateBanner(v.latest);
+  } catch (e) { /* ignore on page load */ }
+}
+
+async function checkForUpdate() {
+  toast('Checking for updates...', 'info');
+  const r = await post('/update/check');
+  if (!r) return;
+  if (r.result === 'update_available') {
+    toast('Update available: v' + r.latest, 'info');
+    showUpdateBanner(r.latest);
+  } else if (r.result === 'no_update') {
+    toast('Firmware is up to date (v' + r.current + ')', 'ok');
+  } else {
+    toast('Update check failed: ' + (r.error || 'unknown'), 'err');
+  }
+}
+
+function showUpdateBanner(version) {
+  document.getElementById('update-version').textContent = 'v' + version;
+  document.getElementById('update-row').classList.remove('hidden');
+}
+
+async function applyUpdate() {
+  if (!confirm('Install firmware update? The device will reboot.')) return;
+  const r = await post('/update/apply');
+  if (r && r.ok) toast('Installing update, device will reboot...', 'info');
+}
 )rawliteral";
 
-#endif // WEB_CONTENT_H
+#endif

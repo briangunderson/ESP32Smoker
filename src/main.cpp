@@ -14,6 +14,7 @@
 #include "telnet_server.h"
 #include "tui_server.h"
 #include "encoder.h"
+#include "http_ota.h"
 
 // Global objects
 MAX31865* tempSensor = nullptr;
@@ -296,6 +297,13 @@ void initializeOTA() {
   Serial.println("[OTA] Over-The-Air updates configured");
 }
 
+// Safety check for HTTP OTA — returns true if safe to update
+bool isOtaUpdateSafe() {
+  if (!controller) return false;
+  ControllerState state = controller->getState();
+  return (state == STATE_IDLE || state == STATE_SHUTDOWN);
+}
+
 // ============================================================================
 // SETUP
 // ============================================================================
@@ -372,6 +380,10 @@ void setup() {
   // Initialize OTA updates
   initializeOTA();
 
+  // Initialize HTTP OTA (pull-based updates from GitHub Releases)
+  httpOTA.setSafetyCheck(isOtaUpdateSafe);
+  httpOTA.begin();
+
   // Web Server
   webServer = new WebServer(controller, WEB_SERVER_PORT);
   webServer->begin();
@@ -408,6 +420,13 @@ void loop() {
 
   // Handle OTA updates
   ArduinoOTA.handle();
+
+  // Handle HTTP OTA update checks (pull-based from GitHub)
+  httpOTA.update();
+  if (httpOTA.isUpdateRequested()) {
+    httpOTA.clearUpdateRequest();
+    httpOTA.performUpdate();
+  }
 
   // Handle telnet server
   telnetServer.loop();

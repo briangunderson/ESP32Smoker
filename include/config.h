@@ -201,10 +201,19 @@
 #endif
 
 // ============================================================================
+// HTTP OTA CONFIGURATION (Pull-based updates from GitHub Releases)
+// ============================================================================
+
+#define ENABLE_HTTP_OTA          true
+#define HTTP_OTA_CHECK_INTERVAL  21600000UL  // ms (6 hours)
+#define HTTP_OTA_BOOT_DELAY      60000UL     // ms (60s after boot before first check)
+#define HTTP_OTA_URL_BASE        "https://github.com/briangunderson/ESP32Smoker/releases/latest/download"
+
+// ============================================================================
 // FIRMWARE METADATA
 // ============================================================================
 
-#define FIRMWARE_VERSION  "1.0.0"
+#define FIRMWARE_VERSION  "1.1.0"
 #define FIRMWARE_BUILD    __DATE__ " " __TIME__
 
 #endif // CONFIG_H

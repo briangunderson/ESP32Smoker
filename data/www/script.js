@@ -1,4 +1,4 @@
-/* ESP32 Smoker Controller */
+/* GunderGrill Controller */
 const API = '/api';
 const POLL_MS = 2000;
 let apiOk = false;
@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateStatus();
   setInterval(updateStatus, POLL_MS);
   window.addEventListener('resize', drawGraph);
+  checkVersionStatus();
 });
 
 // --- Toast Notifications ---
@@ -111,6 +112,12 @@ function updateUI(s) {
     document.getElementById('runtime').textContent = m + ':' + String(sec).padStart(2, '0');
   }
   document.getElementById('error-count').textContent = s.errors || 0;
+
+  // Firmware version
+  if (s.version) {
+    document.getElementById('fw-version').textContent = 'v' + s.version;
+    document.getElementById('fw-footer-version').textContent = 'v' + s.version;
+  }
 
   // Buttons
   const running = state !== 'Idle' && state !== 'Shutdown' && state !== 'Error';
@@ -453,4 +460,39 @@ async function clearTempOverride() {
 async function resetError() {
   const r = await post('/debug/reset');
   if (r) toast('Error state cleared', 'ok');
+}
+
+// --- Firmware Updates ---
+async function checkVersionStatus() {
+  try {
+    const r = await fetch(API + '/version');
+    if (!r.ok) return;
+    const v = await r.json();
+    if (v.updateAvailable) showUpdateBanner(v.latest);
+  } catch (e) { /* ignore on page load */ }
+}
+
+async function checkForUpdate() {
+  toast('Checking for updates...', 'info');
+  const r = await post('/update/check');
+  if (!r) return;
+  if (r.result === 'update_available') {
+    toast('Update available: v' + r.latest, 'info');
+    showUpdateBanner(r.latest);
+  } else if (r.result === 'no_update') {
+    toast('Firmware is up to date (v' + r.current + ')', 'ok');
+  } else {
+    toast('Update check failed: ' + (r.error || 'unknown'), 'err');
+  }
+}
+
+function showUpdateBanner(version) {
+  document.getElementById('update-version').textContent = 'v' + version;
+  document.getElementById('update-row').classList.remove('hidden');
+}
+
+async function applyUpdate() {
+  if (!confirm('Install firmware update? The device will reboot.')) return;
+  const r = await post('/update/apply');
+  if (r && r.ok) toast('Installing update, device will reboot...', 'info');
 }
