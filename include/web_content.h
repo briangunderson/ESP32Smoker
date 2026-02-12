@@ -66,7 +66,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                 </div>
                 <div class="setpoint-row">
                     <button class="btn-adj" onclick="adjSetpoint(-5)">-</button>
-                    <input type="number" id="setpoint-input" min="150" max="350" value="225" step="5">
+                    <input type="number" id="setpoint-input" min="150" max="500" value="225" step="5">
                     <span class="sp-unit">°F</span>
                     <button class="btn-adj" onclick="adjSetpoint(5)">+</button>
                     <button class="btn btn-apply" onclick="applySetpoint()">Set</button>
@@ -529,13 +529,14 @@ async function doShutdown() {
 
 function adjSetpoint(delta) {
   const el = document.getElementById('setpoint-input');
-  const v = Math.max(150, Math.min(350, parseInt(el.value) + delta));
+  const v = Math.max(150, Math.min(500, parseInt(el.value) + delta));
   el.value = v;
+  el.focus();
 }
 
 async function applySetpoint() {
   const v = parseInt(document.getElementById('setpoint-input').value);
-  if (v < 150 || v > 350) { toast('150-350\u00B0F range', 'err'); return; }
+  if (v < 150 || v > 500) { toast('150-500\u00B0F range', 'err'); return; }
   const r = await post('/setpoint', { temp: v });
   if (r) toast('Setpoint: ' + v + '\u00B0F', 'ok');
 }
