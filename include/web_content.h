@@ -176,8 +176,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 .temp-unit{font-size:18px;color:var(--text2)}
 .temp-label{margin-top:8px;font-size:12px;text-transform:uppercase;letter-spacing:2px;color:var(--text2)}
 .graph-card{padding-bottom:12px}
-.graph-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.graph-header h3{margin-bottom:0}
+.graph-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px}
+.graph-header h3{margin-bottom:0;min-width:0}
 .graph-range-btns{display:flex;gap:4px;flex-shrink:0}
 .graph-range-btns button{padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
 .graph-range-btns button:hover{border-color:var(--fire);color:var(--fire)}
