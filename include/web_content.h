@@ -276,16 +276,16 @@ body {
 .graph-card { padding-bottom: 12px; }
 .graph-header {
   display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
 }
-.graph-header h3 { margin-bottom: 0; }
+.graph-header h3 { margin-bottom: 0; min-width: 0; }
 .graph-range-btns {
-  display: flex; gap: 4px;
+  display: flex; gap: 4px; flex-shrink: 0;
 }
 .graph-range-btns button {
   padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--bg); color: var(--text2); font-size: 11px; font-weight: 600;
-  cursor: pointer; transition: all .15s;
+  cursor: pointer; transition: all .15s; white-space: nowrap;
 }
 .graph-range-btns button:hover { border-color: var(--fire); color: var(--fire); }
 .graph-range-btns button.active {
@@ -359,7 +359,8 @@ body {
 .sp-unit { font-size: 14px; color: var(--text2); }
 
 /* Relay & Info Row */
-.info-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.info-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-width: 0; }
+.info-row > .card { min-width: 0; overflow: hidden; }
 .relay-grid { display: flex; gap: 8px; }
 .relay {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -746,6 +747,7 @@ function drawGraph() {
   }
 
   // Event lines (state changes)
+  var lastLabelX = -100;
   for (var i = 0; i < visEvents.length; i++) {
     var e = visEvents[i];
     if (e.t < tMin || e.t > tMax) continue;
@@ -756,11 +758,15 @@ function drawGraph() {
     ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + gH); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.globalAlpha = 0.7;
-    ctx.fillStyle = STATE_COLORS[e.st] || '#666';
-    ctx.font = '9px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(STATE_NAMES[e.st] || '', x, padT - 2);
+    // Only draw label if it won't overlap the previous one
+    if (x - lastLabelX > 70) {
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = STATE_COLORS[e.st] || '#666';
+      ctx.font = '9px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(STATE_NAMES[e.st] || '', x, padT - 2);
+      lastLabelX = x;
+    }
     ctx.globalAlpha = 1;
   }
 
