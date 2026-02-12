@@ -301,6 +301,7 @@ function drawGraph() {
   }
 
   // Event lines (state changes)
+  var lastLabelX = -100;
   for (var i = 0; i < visEvents.length; i++) {
     var e = visEvents[i];
     if (e.t < tMin || e.t > tMax) continue;
@@ -311,11 +312,15 @@ function drawGraph() {
     ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + gH); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.globalAlpha = 0.7;
-    ctx.fillStyle = STATE_COLORS[e.st] || '#666';
-    ctx.font = '9px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(STATE_NAMES[e.st] || '', x, padT - 2);
+    // Only draw label if it won't overlap the previous one
+    if (x - lastLabelX > 40) {
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = STATE_COLORS[e.st] || '#666';
+      ctx.font = '9px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(STATE_NAMES[e.st] || '', x, padT - 2);
+      lastLabelX = x;
+    }
     ctx.globalAlpha = 1;
   }
 
