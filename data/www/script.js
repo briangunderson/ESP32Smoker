@@ -313,7 +313,7 @@ function drawGraph() {
     ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + gH); ctx.stroke();
     ctx.setLineDash([]);
     // Only draw label if it won't overlap the previous one
-    if (x - lastLabelX > 40) {
+    if (x - lastLabelX > 70) {
       ctx.globalAlpha = 0.7;
       ctx.fillStyle = STATE_COLORS[e.st] || '#666';
       ctx.font = '9px -apple-system, sans-serif';
