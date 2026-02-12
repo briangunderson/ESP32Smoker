@@ -32,6 +32,29 @@ Only skip OTA upload if there's a technical reason preventing it:
 
 **DO NOT** ask the user if they want to upload - just proceed automatically after builds complete successfully.
 
+## CRITICAL: Git & CI/CD Etiquette
+
+**ALWAYS use feature branches** for any non-trivial changes. Multiple Claude instances may be working on this project simultaneously.
+
+### Branch Workflow
+1. **Create a branch** before making changes: `git checkout -b <type>/<short-description>` (e.g., `fix/chart-range`, `feat/new-sensor`)
+2. **Commit to the branch**, not directly to `main`
+3. **Merge to main** only after changes are verified working (build succeeds, OTA upload works)
+4. **Push to remote** after merging: `git push origin main`
+5. **Clean up** feature branches after merge: `git branch -d <branch-name>`
+
+### Avoiding Conflicts
+- **Check `git status` and `git log`** before starting work to see if another instance has made recent changes
+- **Pull before branching**: `git pull origin main` to get latest changes
+- **Never force-push** to main
+- **Keep `web_content.h` in sync**: After editing any file in `data/www/`, always regenerate `include/web_content.h` to match. This file embeds the web UI into firmware via PROGMEM.
+- **OTA_PASSWORD**: Pass `OTA_PASSWORD=YOUR-OTA-PASSWORD` as env var for OTA uploads (not stored in platformio.ini for security)
+
+### Commit Standards
+- Write meaningful commit messages explaining *why*, not just *what*
+- Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` in all commits
+- Don't bundle unrelated changes in a single commit
+
 ## Critical Files
 
 ### Configuration
