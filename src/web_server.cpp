@@ -121,6 +121,8 @@ void WebServer::setupRoutes() {
              });
 
   // API: Temperature history for graph
+  // Compact format: arrays instead of objects, temps as int (°F×10)
+  // Sample: [time, temp×10, setpoint×10, state]  Event: [time, state]
   _server.on("/api/history", HTTP_GET, [this](AsyncWebServerRequest* request) {
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     response->print("{\"now\":");
@@ -130,15 +132,14 @@ void WebServer::setupRoutes() {
     for (uint16_t i = 0; i < count; i++) {
       const HistorySample& s = _controller->getHistorySampleAt(i);
       if (i > 0) response->print(',');
-      response->printf("{\"t\":%u,\"c\":%.1f,\"s\":%.1f,\"st\":%d}",
-                        s.time, s.temp, s.setpoint, s.state);
+      response->printf("[%u,%d,%d,%d]", s.time, s.temp, s.setpoint, s.state);
     }
     response->print("],\"events\":[");
     uint8_t ecount = _controller->getEventCount();
     for (uint8_t i = 0; i < ecount; i++) {
       const HistoryEvent& e = _controller->getHistoryEventAt(i);
       if (i > 0) response->print(',');
-      response->printf("{\"t\":%u,\"st\":%d}", e.time, e.state);
+      response->printf("[%u,%d]", e.time, e.state);
     }
     response->print("]}");
     request->send(response);

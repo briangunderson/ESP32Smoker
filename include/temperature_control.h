@@ -18,10 +18,11 @@ enum ControllerState {
 };
 
 // Temperature history sample (for web graph)
+// 12 bytes/sample with natural alignment (was 16 with floats)
 struct HistorySample {
   uint32_t time;     // seconds since boot (millis()/1000)
-  float temp;        // current temperature °F
-  float setpoint;    // target temperature °F
+  int16_t temp;      // current temperature °F × 10 (2253 = 225.3°F)
+  int16_t setpoint;  // target temperature °F × 10
   uint8_t state;     // ControllerState enum value
 };
 
@@ -30,6 +31,13 @@ struct HistoryEvent {
   uint32_t time;     // seconds since boot
   uint8_t state;     // new state entered
 };
+
+// Safety: ESP32-S3 no PSRAM needs ~100KB free heap for WiFi.
+// History buffer must not exceed 40KB to leave headroom.
+static_assert(
+  sizeof(HistorySample) * HISTORY_MAX_SAMPLES + sizeof(HistoryEvent) * HISTORY_MAX_EVENTS <= 40960,
+  "History buffers exceed 40KB — WiFi will fail on ESP32-S3 without PSRAM"
+);
 
 // PID temperature control
 class TemperatureController {

@@ -89,7 +89,9 @@
 #define PID_SAVE_INTERVAL          300000   // ms (5 min) - periodic save during RUNNING
 
 // Temperature History (ring buffer for web graph)
-#define HISTORY_MAX_SAMPLES        4320     // 24 hours at 20-second intervals
+// Budget: ~30KB for history (ESP32-S3 no PSRAM needs ~100KB free for WiFi)
+// 2500 samples × 12 bytes = 30KB → ~14 hours at 20s intervals
+#define HISTORY_MAX_SAMPLES        2500     // ~14 hours at 20-second intervals
 #define HISTORY_SAMPLE_INTERVAL    20000    // ms between history samples
 #define HISTORY_MAX_EVENTS         64       // State change events to keep
 

@@ -682,8 +682,8 @@ void TemperatureController::recordHistorySample() {
 
   HistorySample& s = _history[_historyHead];
   s.time = now / 1000;
-  s.temp = _currentTemp;
-  s.setpoint = _setpoint;
+  s.temp = (int16_t)(_currentTemp * 10.0f);
+  s.setpoint = (int16_t)(_setpoint * 10.0f);
   s.state = (uint8_t)_state;
 
   _historyHead = (_historyHead + 1) % HISTORY_MAX_SAMPLES;

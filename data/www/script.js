@@ -152,8 +152,14 @@ async function fetchHistory() {
     const r = await fetch(API + '/history');
     if (!r.ok) return;
     const d = await r.json();
-    graphSamples = d.samples || [];
-    graphEvents = d.events || [];
+    // Compact format: samples are [time, temp×10, setpoint×10, state]
+    graphSamples = (d.samples || []).map(function(a) {
+      return {t: a[0], c: a[1] / 10, s: a[2] / 10, st: a[3]};
+    });
+    // Events are [time, state]
+    graphEvents = (d.events || []).map(function(a) {
+      return {t: a[0], st: a[1]};
+    });
     deviceNow = d.now || 0;
     localAtFetch = Date.now();
     graphInited = true;
