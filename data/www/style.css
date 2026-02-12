@@ -125,7 +125,7 @@ body {
 .btn-shutdown:hover:not(:disabled) { background: var(--red-dim); }
 .btn-apply { background: var(--fire); color: #fff; min-width: 60px; }
 .btn-apply:hover:not(:disabled) { background: var(--fire-dim); }
-.debug-btn-row { display: flex; gap: 10px; margin-bottom: 16px; }
+.debug-btn-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
 .btn-debug { background: var(--surface2); color: var(--yellow); border: 1px solid var(--yellow); flex: 1; }
 .btn-debug.active { background: rgba(231,76,60,.15); color: var(--red); border-color: var(--red); }
 .btn-reset { background: var(--red); color: #fff; flex: 1; animation: pulse-badge 1.5s infinite; }

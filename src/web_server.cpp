@@ -241,6 +241,7 @@ void WebServer::setupRoutes() {
     doc["updateAvailable"] = httpOTA.isUpdateAvailable();
     doc["lastCheck"] = httpOTA.getLastCheckTime();
     doc["lastError"] = httpOTA.getLastError();
+    doc["fastCheck"] = httpOTA.isFastCheck();
 
     String response;
     serializeJson(doc, response);
@@ -266,6 +267,23 @@ void WebServer::setupRoutes() {
     String response;
     serializeJson(doc, response);
     request->send(200, "application/json", response);
+  });
+
+  // API: Toggle fast OTA check interval (60s for dev/testing)
+  _server.on("/api/update/fast", HTTP_POST, [](AsyncWebServerRequest* request) {
+    if (request->hasParam("enabled", true)) {
+      bool enabled = request->getParam("enabled", true)->value() == "true";
+      httpOTA.setFastCheck(enabled);
+      StaticJsonDocument<64> doc;
+      doc["ok"] = true;
+      doc["fastCheck"] = enabled;
+      String response;
+      serializeJson(doc, response);
+      request->send(200, "application/json", response);
+    } else {
+      request->send(400, "application/json",
+                    "{\"error\":\"Missing enabled parameter\"}");
+    }
   });
 
   // API: Apply firmware update (deferred — executes in loop)

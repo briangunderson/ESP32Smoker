@@ -469,6 +469,7 @@ async function checkVersionStatus() {
     if (!r.ok) return;
     const v = await r.json();
     if (v.updateAvailable) showUpdateBanner(v.latest);
+    updateFastOtaBtn(v.fastCheck);
   } catch (e) { /* ignore on page load */ }
 }
 
@@ -495,4 +496,21 @@ async function applyUpdate() {
   if (!confirm('Install firmware update? The device will reboot.')) return;
   const r = await post('/update/apply');
   if (r && r.ok) toast('Installing update, device will reboot...', 'info');
+}
+
+let fastOtaActive = false;
+async function toggleFastOta() {
+  fastOtaActive = !fastOtaActive;
+  const r = await post('/update/fast', { enabled: fastOtaActive });
+  if (!r) { fastOtaActive = !fastOtaActive; return; }
+  updateFastOtaBtn(fastOtaActive);
+  toast('OTA check interval: ' + (fastOtaActive ? '60s' : '6hrs'), 'info');
+}
+
+function updateFastOtaBtn(active) {
+  fastOtaActive = !!active;
+  const btn = document.getElementById('btn-fast-ota');
+  if (!btn) return;
+  btn.textContent = 'Fast OTA: ' + (active ? 'On' : 'Off');
+  if (active) btn.classList.add('active'); else btn.classList.remove('active');
 }

@@ -38,7 +38,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                         </svg>
                         <div class="temp-value">
                             <span id="current-temp">--</span>
-                            <span class="temp-unit">°F</span>
+                            <span class="temp-unit">&deg;F</span>
                         </div>
                     </div>
                     <div class="temp-label">Current</div>
@@ -50,7 +50,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                         </svg>
                         <div class="temp-value">
                             <span id="setpoint-temp">225</span>
-                            <span class="temp-unit">°F</span>
+                            <span class="temp-unit">&deg;F</span>
                         </div>
                     </div>
                     <div class="temp-label">Target</div>
@@ -78,7 +78,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                 <div class="setpoint-row">
                     <button class="btn-adj" onclick="adjSetpoint(-5)">-</button>
                     <input type="number" id="setpoint-input" min="150" max="500" value="225" step="5">
-                    <span class="sp-unit">°F</span>
+                    <span class="sp-unit">&deg;F</span>
                     <button class="btn-adj" onclick="adjSetpoint(5)">+</button>
                     <button class="btn btn-apply" onclick="applySetpoint()">Set</button>
                 </div>
@@ -137,6 +137,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                         <button id="btn-debug" class="btn btn-debug" onclick="toggleDebugMode()">Enable Debug Mode</button>
                         <button id="btn-reset-error" class="btn btn-reset hidden" onclick="resetError()">Reset Error</button>
                         <button class="btn btn-debug" onclick="checkForUpdate()">Check for Updates</button>
+                        <button id="btn-fast-ota" class="btn btn-debug" onclick="toggleFastOta()">Fast OTA: Off</button>
                     </div>
                     <div id="debug-controls" class="hidden">
                         <h4>Manual Relay Control</h4>
@@ -159,7 +160,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                         </div>
                         <h4>Temperature Override</h4>
                         <div class="override-row">
-                            <input type="number" id="temp-override" min="0" max="600" value="225" placeholder="°F">
+                            <input type="number" id="temp-override" min="0" max="600" value="225" placeholder="&deg;F">
                             <button class="btn btn-apply" onclick="setTempOverride()">Set</button>
                             <button class="btn btn-stop" onclick="clearTempOverride()">Clear</button>
                         </div>
@@ -307,7 +308,7 @@ body {
 .btn-shutdown:hover:not(:disabled) { background: var(--red-dim); }
 .btn-apply { background: var(--fire); color: #fff; min-width: 60px; }
 .btn-apply:hover:not(:disabled) { background: var(--fire-dim); }
-.debug-btn-row { display: flex; gap: 10px; margin-bottom: 16px; }
+.debug-btn-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
 .btn-debug { background: var(--surface2); color: var(--yellow); border: 1px solid var(--yellow); flex: 1; }
 .btn-debug.active { background: rgba(231,76,60,.15); color: var(--red); border-color: var(--red); }
 .btn-reset { background: var(--red); color: #fff; flex: 1; animation: pulse-badge 1.5s infinite; }
@@ -493,7 +494,7 @@ function updateUI(s) {
   }
   spEl.textContent = sp.toFixed(0);
 
-  // Temperature ring (0-500°F range mapped to SVG circle)
+  // Temperature ring (0-500degF range mapped to SVG circle)
   const ring = document.getElementById('ring-fill');
   const pct = Math.max(0, Math.min(1, temp / 500));
   const circumference = 326.7;
@@ -886,6 +887,7 @@ async function checkVersionStatus() {
     if (!r.ok) return;
     const v = await r.json();
     if (v.updateAvailable) showUpdateBanner(v.latest);
+    updateFastOtaBtn(v.fastCheck);
   } catch (e) { /* ignore on page load */ }
 }
 
@@ -913,6 +915,23 @@ async function applyUpdate() {
   const r = await post('/update/apply');
   if (r && r.ok) toast('Installing update, device will reboot...', 'info');
 }
+
+let fastOtaActive = false;
+async function toggleFastOta() {
+  fastOtaActive = !fastOtaActive;
+  const r = await post('/update/fast', { enabled: fastOtaActive });
+  if (!r) { fastOtaActive = !fastOtaActive; return; }
+  updateFastOtaBtn(fastOtaActive);
+  toast('OTA check interval: ' + (fastOtaActive ? '60s' : '6hrs'), 'info');
+}
+
+function updateFastOtaBtn(active) {
+  fastOtaActive = !!active;
+  const btn = document.getElementById('btn-fast-ota');
+  if (!btn) return;
+  btn.textContent = 'Fast OTA: ' + (active ? 'On' : 'Off');
+  if (active) btn.classList.add('active'); else btn.classList.remove('active');
+}
 )rawliteral";
 
-#endif
+#endif // WEB_CONTENT_H

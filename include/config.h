@@ -206,6 +206,7 @@
 
 #define ENABLE_HTTP_OTA          true
 #define HTTP_OTA_CHECK_INTERVAL  21600000UL  // ms (6 hours)
+#define HTTP_OTA_FAST_INTERVAL   60000UL     // ms (60s — dev/testing mode)
 #define HTTP_OTA_BOOT_DELAY      60000UL     // ms (60s after boot before first check)
 #define HTTP_OTA_URL_BASE        "https://github.com/briangunderson/ESP32Smoker/releases/latest/download"
 

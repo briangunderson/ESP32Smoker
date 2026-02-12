@@ -20,6 +20,7 @@ HttpOTA::HttpOTA()
       _lastCheckTime(0),
       _lastCheckMillis(0),
       _initialized(false),
+      _fastCheck(false),
       _safetyCheck(nullptr) {}
 
 void HttpOTA::begin() {
@@ -37,8 +38,9 @@ void HttpOTA::update() {
 
   unsigned long now = millis();
 
-  // First check after boot delay, then every HTTP_OTA_CHECK_INTERVAL
-  unsigned long interval = (_lastCheckMillis == 0) ? HTTP_OTA_BOOT_DELAY : HTTP_OTA_CHECK_INTERVAL;
+  // First check after boot delay, then every check interval (fast or normal)
+  unsigned long checkInterval = _fastCheck ? HTTP_OTA_FAST_INTERVAL : HTTP_OTA_CHECK_INTERVAL;
+  unsigned long interval = (_lastCheckMillis == 0) ? HTTP_OTA_BOOT_DELAY : checkInterval;
   if (now - _lastCheckMillis < interval) return;
   _lastCheckMillis = now;
 
