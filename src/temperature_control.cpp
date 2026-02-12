@@ -60,8 +60,15 @@ void TemperatureController::update() {
   }
 
   // Check for temperature faults
-  if (_currentTemp <= TEMP_MIN_SAFE || _currentTemp >= TEMP_MAX_SAFE) {
-    handleTemperatureError();
+  // High temp: check in all active states (runaway fire is always dangerous)
+  // Low temp: only check during RUNNING/COOLDOWN (smoker is cold during STARTUP)
+  if (_state != STATE_IDLE && _state != STATE_ERROR) {
+    if (_currentTemp >= TEMP_MAX_SAFE) {
+      handleTemperatureError();
+    }
+    if ((_state == STATE_RUNNING || _state == STATE_COOLDOWN) && _currentTemp <= TEMP_MIN_SAFE) {
+      handleTemperatureError();
+    }
   }
 
   // Detect and log state transitions
