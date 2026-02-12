@@ -35,6 +35,10 @@ public:
   unsigned long getLastCheckTime() const { return _lastCheckTime; }
   const String& getLastError() const { return _lastError; }
 
+  // Fast check mode (60s interval for dev/testing)
+  void setFastCheck(bool enabled) { _fastCheck = enabled; _lastCheckMillis = 0; }
+  bool isFastCheck() const { return _fastCheck; }
+
   // Safety check callback — returns true if safe to update
   typedef bool (*SafetyCheckFn)();
   void setSafetyCheck(SafetyCheckFn fn) { _safetyCheck = fn; }
@@ -48,6 +52,7 @@ private:
   unsigned long _lastCheckTime;     // uptime in seconds when last checked
   unsigned long _lastCheckMillis;   // millis() at last check
   bool _initialized;
+  bool _fastCheck;
   SafetyCheckFn _safetyCheck;
 
   bool isNewerVersion(const String& remote, const String& local);

@@ -4,8 +4,8 @@
 This is a complete, production-ready wood pellet smoker controller built on ESP32 with Arduino framework. It features real-time temperature control, web interface, and Home Assistant integration via MQTT.
 
 **Status**: Hardware working (PT1000 + 4300Ω ref on second MAX31865 board)
-**Version**: 1.1.0 (HTTP OTA + GunderGrill rebrand)
-**Last Build**: February 11, 2026
+**Version**: 1.1.0 (HTTP OTA + GunderGrill rebrand + Fast OTA toggle)
+**Last Build**: February 12, 2026
 **Product Name**: GunderGrill
 
 ## Quick Facts
@@ -60,6 +60,7 @@ Only skip OTA upload if there's a technical reason preventing it:
 - `QUICK_REFERENCE.md` - Cheat sheet for common tasks
 - `docs/ARCHITECTURE.md` - System design, control algorithms
 - `docs/API.md` - REST API reference
+- `docs/DEVELOPER.md` - Build, release workflow, CI/CD pipeline
 - `hardware/WIRING_DIAGRAM.md` - Complete wiring guide
 
 ### Logging Infrastructure (logging/)
@@ -420,16 +421,18 @@ The ESP32 periodically checks GitHub Releases for new firmware versions and auto
 ```cpp
 #define ENABLE_HTTP_OTA          true
 #define HTTP_OTA_CHECK_INTERVAL  21600000UL  // 6 hours
+#define HTTP_OTA_FAST_INTERVAL   60000UL     // 60s (dev/testing mode)
 #define HTTP_OTA_BOOT_DELAY      60000UL     // 60s after boot
 #define HTTP_OTA_URL_BASE        "https://github.com/briangunderson/ESP32Smoker/releases/latest/download"
 ```
 
-**Web UI:** "Check for Updates" button in Debug panel, firmware version in Info card
+**Web UI:** "Check for Updates" and "Fast OTA" toggle buttons in Debug panel, firmware version in Info card. Fast OTA switches the check interval from 6 hours to 60 seconds for active development.
 
 **API Endpoints:**
-- `GET /api/version` — Current/latest version, update status
+- `GET /api/version` — Current/latest version, update status, fastCheck flag
 - `POST /api/update/check` — Manually trigger version check
 - `POST /api/update/apply` — Install available update (smoker must be idle)
+- `POST /api/update/fast` — Toggle fast OTA check interval (FormData: `enabled=true/false`)
 
 **Release Workflow:**
 1. Bump `FIRMWARE_VERSION` in config.h
