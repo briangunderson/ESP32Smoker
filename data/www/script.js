@@ -243,8 +243,8 @@ function drawGraph() {
 
   // Temp range (auto-scale with padding)
   var cMin = Infinity, cMax = -Infinity;
-  for (var i = 0; i < graphSamples.length; i++) {
-    var p = graphSamples[i];
+  for (var i = 0; i < visSamples.length; i++) {
+    var p = visSamples[i];
     if (p.c > -100 && p.c < 1000) {
       if (p.c < cMin) cMin = p.c;
       if (p.c > cMax) cMax = p.c;
@@ -261,10 +261,10 @@ function drawGraph() {
   function ty(temp) { return padT + (1 - (temp - cMin) / (cMax - cMin)) * gH; }
 
   // State background bands
-  if (graphSamples.length > 1) {
-    for (var i = 0; i < graphSamples.length - 1; i++) {
-      var p = graphSamples[i];
-      var n = graphSamples[i + 1];
+  if (visSamples.length > 1) {
+    for (var i = 0; i < visSamples.length - 1; i++) {
+      var p = visSamples[i];
+      var n = visSamples[i + 1];
       var x0 = tx(p.t), x1 = tx(n.t);
       var col = STATE_COLORS[p.st] || '#555';
       ctx.fillStyle = col.replace(')', ',0.06)').replace('rgb', 'rgba').replace('#', '');
@@ -301,8 +301,8 @@ function drawGraph() {
   }
 
   // Event lines (state changes)
-  for (var i = 0; i < graphEvents.length; i++) {
-    var e = graphEvents[i];
+  for (var i = 0; i < visEvents.length; i++) {
+    var e = visEvents[i];
     if (e.t < tMin || e.t > tMax) continue;
     var x = tx(e.t);
     ctx.strokeStyle = STATE_COLORS[e.st] || '#666';
@@ -325,8 +325,8 @@ function drawGraph() {
   ctx.lineWidth = 1.5;
   ctx.setLineDash([6, 4]);
   ctx.beginPath();
-  for (var i = 0; i < graphSamples.length; i++) {
-    var p = graphSamples[i];
+  for (var i = 0; i < visSamples.length; i++) {
+    var p = visSamples[i];
     var x = tx(p.t), y = ty(p.s);
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
@@ -340,8 +340,8 @@ function drawGraph() {
   ctx.lineJoin = 'round';
   ctx.beginPath();
   var started = false;
-  for (var i = 0; i < graphSamples.length; i++) {
-    var p = graphSamples[i];
+  for (var i = 0; i < visSamples.length; i++) {
+    var p = visSamples[i];
     if (p.c < -100 || p.c > 1000) { started = false; continue; }
     var x = tx(p.t), y = ty(p.c);
     if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
@@ -349,8 +349,8 @@ function drawGraph() {
   ctx.stroke();
 
   // Current value label at end of temperature line
-  if (graphSamples.length > 0) {
-    var last = graphSamples[graphSamples.length - 1];
+  if (visSamples.length > 0) {
+    var last = visSamples[visSamples.length - 1];
     if (last.c > -100 && last.c < 1000) {
       var lx = tx(last.t), ly = ty(last.c);
       ctx.fillStyle = '#ff6b35';
@@ -388,13 +388,17 @@ function niceTimeStep(rangeSeconds) {
   if (rangeSeconds < 600) return 60;
   if (rangeSeconds < 1800) return 300;
   if (rangeSeconds < 3600) return 600;
-  return 900;
+  if (rangeSeconds < 7200) return 900;
+  if (rangeSeconds < 14400) return 1800;
+  return 3600;
 }
 
 function fmtAgo(sec) {
   if (sec < 60) return sec.toFixed(0) + 's';
-  var m = Math.round(sec / 60);
-  return m + 'm';
+  if (sec < 3600) return Math.round(sec / 60) + 'm';
+  var h = Math.floor(sec / 3600);
+  var m = Math.round((sec % 3600) / 60);
+  return m > 0 ? h + 'h' + m + 'm' : h + 'h';
 }
 
 function setConn(id, ok) {

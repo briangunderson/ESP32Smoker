@@ -59,7 +59,17 @@ const char web_index_html[] PROGMEM = R"rawliteral(
 
             <!-- Temperature Graph -->
             <section class="card graph-card">
-                <h3>Temperature History</h3>
+                <div class="graph-header">
+                    <h3>Temperature History</h3>
+                    <div class="graph-range-btns" id="graph-range-btns">
+                        <button onclick="setGraphRange(300)">5m</button>
+                        <button onclick="setGraphRange(900)">15m</button>
+                        <button onclick="setGraphRange(1800)">30m</button>
+                        <button class="active" onclick="setGraphRange(3600)">1h</button>
+                        <button onclick="setGraphRange(7200)">2h</button>
+                        <button onclick="setGraphRange(0)">All</button>
+                    </div>
+                </div>
                 <canvas id="temp-graph"></canvas>
                 <div class="graph-legend">
                     <span class="legend-item"><span class="legend-swatch temp"></span>Temp</span>
@@ -264,6 +274,23 @@ body {
 
 /* Temperature Graph */
 .graph-card { padding-bottom: 12px; }
+.graph-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
+}
+.graph-header h3 { margin-bottom: 0; }
+.graph-range-btns {
+  display: flex; gap: 4px;
+}
+.graph-range-btns button {
+  padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--text2); font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+}
+.graph-range-btns button:hover { border-color: var(--fire); color: var(--fire); }
+.graph-range-btns button.active {
+  background: var(--fire); color: #fff; border-color: var(--fire);
+}
 #temp-graph {
   width: 100%; height: 200px;
   display: block; border-radius: 6px;
@@ -412,6 +439,7 @@ footer { text-align: center; padding: 16px 0; font-size: 12px; color: #555; bord
   .info-row { grid-template-columns: 1fr; }
   .control-row { grid-template-columns: 1fr 1fr; }
   .control-row .btn-shutdown { grid-column: 1 / -1; }
+  .graph-range-btns button { padding: 4px 7px; font-size: 10px; }
 }
 )rawliteral";
 
@@ -428,6 +456,7 @@ let graphEvents = [];    // {t, st} from backend
 let deviceNow = 0;       // device uptime (seconds) at last history fetch
 let localAtFetch = 0;    // Date.now() when history was fetched
 let graphInited = false;
+let graphRangeSec = 3600; // 0 = all data
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -592,11 +621,32 @@ function appendGraphPoint(s) {
       graphEvents.push({t: Math.round(estNow), st: stIdx});
     }
   }
-  // Trim to ~1 hour
-  var cutoff = estNow - 3660;
+  // Trim to backend capacity (~3 hours)
+  var cutoff = estNow - 10860;
   while (graphSamples.length > 1 && graphSamples[0].t < cutoff) graphSamples.shift();
   while (graphEvents.length > 0 && graphEvents[0].t < cutoff) graphEvents.shift();
   drawGraph();
+}
+
+function setGraphRange(sec) {
+  graphRangeSec = sec;
+  var btns = document.querySelectorAll('#graph-range-btns button');
+  btns.forEach(function(b) { b.classList.remove('active'); });
+  // Find the clicked button by matching its range
+  var vals = [300, 900, 1800, 3600, 7200, 0];
+  var idx = vals.indexOf(sec);
+  if (idx >= 0 && btns[idx]) btns[idx].classList.add('active');
+  drawGraph();
+}
+
+function getVisibleData() {
+  if (graphSamples.length === 0) return { samples: [], events: [] };
+  if (graphRangeSec === 0) return { samples: graphSamples, events: graphEvents };
+  var tMax = graphSamples[graphSamples.length - 1].t;
+  var tCut = tMax - graphRangeSec;
+  var samples = graphSamples.filter(function(p) { return p.t >= tCut; });
+  var events = graphEvents.filter(function(e) { return e.t >= tCut; });
+  return { samples: samples, events: events };
 }
 
 function drawGraph() {
@@ -615,7 +665,11 @@ function drawGraph() {
   ctx.fillStyle = '#111';
   ctx.fillRect(0, 0, W, H);
 
-  if (graphSamples.length < 2) {
+  var vis = getVisibleData();
+  var visSamples = vis.samples;
+  var visEvents = vis.events;
+
+  if (visSamples.length < 2) {
     ctx.fillStyle = '#555';
     ctx.font = '13px -apple-system, sans-serif';
     ctx.textAlign = 'center';
@@ -629,14 +683,14 @@ function drawGraph() {
   var gH = H - padT - padB;
 
   // Time range
-  var tMin = graphSamples[0].t;
-  var tMax = graphSamples[graphSamples.length - 1].t;
+  var tMax = visSamples[visSamples.length - 1].t;
+  var tMin = (graphRangeSec > 0) ? tMax - graphRangeSec : visSamples[0].t;
   if (tMax - tMin < 30) tMax = tMin + 30; // at least 30s window
 
   // Temp range (auto-scale with padding)
   var cMin = Infinity, cMax = -Infinity;
-  for (var i = 0; i < graphSamples.length; i++) {
-    var p = graphSamples[i];
+  for (var i = 0; i < visSamples.length; i++) {
+    var p = visSamples[i];
     if (p.c > -100 && p.c < 1000) {
       if (p.c < cMin) cMin = p.c;
       if (p.c > cMax) cMax = p.c;
@@ -653,10 +707,10 @@ function drawGraph() {
   function ty(temp) { return padT + (1 - (temp - cMin) / (cMax - cMin)) * gH; }
 
   // State background bands
-  if (graphSamples.length > 1) {
-    for (var i = 0; i < graphSamples.length - 1; i++) {
-      var p = graphSamples[i];
-      var n = graphSamples[i + 1];
+  if (visSamples.length > 1) {
+    for (var i = 0; i < visSamples.length - 1; i++) {
+      var p = visSamples[i];
+      var n = visSamples[i + 1];
       var x0 = tx(p.t), x1 = tx(n.t);
       var col = STATE_COLORS[p.st] || '#555';
       ctx.fillStyle = col.replace(')', ',0.06)').replace('rgb', 'rgba').replace('#', '');
@@ -693,8 +747,8 @@ function drawGraph() {
   }
 
   // Event lines (state changes)
-  for (var i = 0; i < graphEvents.length; i++) {
-    var e = graphEvents[i];
+  for (var i = 0; i < visEvents.length; i++) {
+    var e = visEvents[i];
     if (e.t < tMin || e.t > tMax) continue;
     var x = tx(e.t);
     ctx.strokeStyle = STATE_COLORS[e.st] || '#666';
@@ -717,8 +771,8 @@ function drawGraph() {
   ctx.lineWidth = 1.5;
   ctx.setLineDash([6, 4]);
   ctx.beginPath();
-  for (var i = 0; i < graphSamples.length; i++) {
-    var p = graphSamples[i];
+  for (var i = 0; i < visSamples.length; i++) {
+    var p = visSamples[i];
     var x = tx(p.t), y = ty(p.s);
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
@@ -732,8 +786,8 @@ function drawGraph() {
   ctx.lineJoin = 'round';
   ctx.beginPath();
   var started = false;
-  for (var i = 0; i < graphSamples.length; i++) {
-    var p = graphSamples[i];
+  for (var i = 0; i < visSamples.length; i++) {
+    var p = visSamples[i];
     if (p.c < -100 || p.c > 1000) { started = false; continue; }
     var x = tx(p.t), y = ty(p.c);
     if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
@@ -741,8 +795,8 @@ function drawGraph() {
   ctx.stroke();
 
   // Current value label at end of temperature line
-  if (graphSamples.length > 0) {
-    var last = graphSamples[graphSamples.length - 1];
+  if (visSamples.length > 0) {
+    var last = visSamples[visSamples.length - 1];
     if (last.c > -100 && last.c < 1000) {
       var lx = tx(last.t), ly = ty(last.c);
       ctx.fillStyle = '#ff6b35';
@@ -780,13 +834,17 @@ function niceTimeStep(rangeSeconds) {
   if (rangeSeconds < 600) return 60;
   if (rangeSeconds < 1800) return 300;
   if (rangeSeconds < 3600) return 600;
-  return 900;
+  if (rangeSeconds < 7200) return 900;
+  if (rangeSeconds < 14400) return 1800;
+  return 3600;
 }
 
 function fmtAgo(sec) {
   if (sec < 60) return sec.toFixed(0) + 's';
-  var m = Math.round(sec / 60);
-  return m + 'm';
+  if (sec < 3600) return Math.round(sec / 60) + 'm';
+  var h = Math.floor(sec / 3600);
+  var m = Math.round((sec % 3600) / 60);
+  return m > 0 ? h + 'h' + m + 'm' : h + 'h';
 }
 
 function setConn(id, ok) {
