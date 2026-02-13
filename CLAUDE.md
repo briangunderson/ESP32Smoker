@@ -4,8 +4,8 @@
 This is a complete, production-ready wood pellet smoker controller built on ESP32 with Arduino framework. It features real-time temperature control, web interface, and Home Assistant integration via MQTT.
 
 **Status**: Hardware working (PT1000 + 4300Ω ref on second MAX31865 board)
-**Version**: 1.2.0 (Deferred OTA check + graph range buttons + first GitHub release)
-**Last Build**: February 12, 2026
+**Version**: 1.4.0 (Reignite logic, lid detection, PID visualization, OTA auth)
+**Last Build**: February 13, 2026
 **Product Name**: GunderGrill
 
 ## Quick Facts
@@ -16,7 +16,7 @@ This is a complete, production-ready wood pellet smoker controller built on ESP3
 - **Input**: M5Stack Unit Encoder (U135) rotary encoder via I2C (setpoint adjust + start/stop)
 - **Control**: 3 relays (auger, fan, igniter) with safety interlocks, active-low drive
 - **Connectivity**: WiFi (STA/AP modes) + Web API + MQTT
-- **Lines of Code**: ~4000 total (~1200 firmware, ~950 web UI, ~1500 docs, ~3700 logging infrastructure)
+- **Lines of Code**: ~6000 total (~1400 firmware, ~1550 web UI, ~1500 docs, ~3700 logging infrastructure)
 
 ## CRITICAL: User Preferences
 
@@ -73,9 +73,9 @@ Only skip OTA upload if there's a technical reason preventing it:
 - `encoder.cpp` - M5Stack Unit Encoder I2C driver (rotary + button + RGB LED)
 
 ### Web Interface (data/www/)
-- `index.html` - Responsive dashboard
-- `style.css` - Modern UI styling
-- `script.js` - Real-time updates, API calls
+- `index.html` - Responsive dashboard with tab system (Dashboard + PID Visualizer)
+- `style.css` - Modern UI styling with PID visualization layout
+- `script.js` - Real-time updates, API calls, Canvas-based PID visualization
 
 ### Documentation
 - `README.md` - Main documentation (features, usage, setup)
@@ -99,9 +99,13 @@ Only skip OTA upload if there's a technical reason preventing it:
 ### Temperature Control State Machine
 ```
 IDLE → STARTUP → RUNNING → COOLDOWN → SHUTDOWN → IDLE
-              ↓
-            ERROR (on fault)
+                    ↓  ↑
+                 REIGNITE (auto-recovery, max 3 attempts)
+                    ↓
+                  ERROR (on fault or max reignite attempts)
 ```
+
+**States**: IDLE(0), STARTUP(1), RUNNING(2), COOLDOWN(3), SHUTDOWN(4), ERROR(5), REIGNITE(6)
 
 **STARTUP sequence**:
 1. Pre-heat igniter (60s)
@@ -116,12 +120,24 @@ IDLE → STARTUP → RUNNING → COOLDOWN → SHUTDOWN → IDLE
 - Minimum 15% auger duty cycle to keep fire alive
 - Fan runs continuously
 - Igniter off
+- Lid-open detection freezes PID integral to prevent overshoot
+- Reignite detection monitors for dead fire (temp < 140°F with PID maxed)
+
+**REIGNITE sequence** (4 phases, triggered when fire dies):
+1. **Fan Clear** (30s): Fan ON, auger OFF — clear ash from firepot
+2. **Igniter Preheat** (60s): Fan ON, igniter ON, auger OFF — heat igniter rod
+3. **Feeding** (30s): Fan ON, igniter ON, auger ON — feed fresh pellets
+4. **Recovery** (120s): Fan ON, igniter OFF, auger 50% — wait for temp recovery
+- Success: Temp rises above 140°F → return to RUNNING
+- Failure after 3 attempts → ERROR state
 
 ### Safety Features
 1. **Auger Interlock**: Auger cannot run without fan (fire safety)
 2. **Temperature Limits**: Emergency stop if T < 50°F or T > 500°F
 3. **Sensor Monitoring**: 3 consecutive read errors → emergency stop
 4. **Startup Timeout**: 180-second maximum before error state
+5. **Reignite Limit**: Max 3 auto-recovery attempts before requiring manual intervention
+6. **Lid-Open Detection**: Freezes PID integral during rapid temp drops to prevent overshoot
 
 ### GPIO Pin Assignments (config.h)
 ```
@@ -205,6 +221,28 @@ Uses Proportional Band method (from PiSmoker) - proven stable control:
 
 Gains are auto-calculated: Kp = -1/PB = -0.0167, Ki = Kp/Ti = -0.0000926, Kd = Kp*Td = -0.75
 
+### Reignite Logic (config.h, v1.4.0)
+Auto-recovery when fire dies during RUNNING state:
+- `ENABLE_REIGNITE`: true
+- `REIGNITE_TEMP_THRESHOLD`: 140.0°F (below this, fire may be out)
+- `REIGNITE_TRIGGER_TIME`: 120000ms (PID maxed for 2 min triggers reignite)
+- `REIGNITE_MAX_ATTEMPTS`: 3 (then → ERROR state)
+- `REIGNITE_FAN_CLEAR_TIME`: 30000ms (phase 1)
+- `REIGNITE_PREHEAT_TIME`: 60000ms (phase 2)
+- `REIGNITE_FEED_TIME`: 30000ms (phase 3)
+- `REIGNITE_RECOVERY_TIME`: 120000ms (phase 4)
+
+Detection: temp < threshold AND PID output maxed (1.0) for trigger time AND not lid-open.
+
+### Lid-Open Detection (config.h, v1.4.0)
+Detects rapid temp drops from opening the smoker lid, freezes PID integral to prevent overshoot:
+- `ENABLE_LID_DETECTION`: true
+- `LID_OPEN_DERIVATIVE_THRESHOLD`: -2.0 (°F/s rate of drop)
+- `LID_CLOSE_RECOVERY_TIME`: 30000ms (stable before declaring lid closed)
+- `LID_OPEN_MIN_DURATION`: 5000ms (minimum to avoid false triggers)
+
+PID behavior: Integral accumulation is frozen while lid is open. Proportional and derivative continue normally. When lid closes, integral resumes from frozen value.
+
 ### Timing (config.h)
 - `IGNITER_PREHEAT_TIME`: 60000ms (1 minute)
 - `FAN_STARTUP_DELAY`: 5000ms (5 seconds)
@@ -227,11 +265,27 @@ Gains are auto-calculated: Kp = -1/PB = -0.0167, Ki = Kp/Ti = -0.0000926, Kd = K
 ## REST API Endpoints
 
 ### Normal Operation
-- `GET /api/status` - Current temp, setpoint, state, relay status
+- `GET /api/status` - Current temp, setpoint, state, relay status, PID data (see below)
 - `POST /api/start` - Start smoking (optional: `{"temp": 250}`)
 - `POST /api/stop` - Stop feeding pellets, initiate cooldown
 - `POST /api/shutdown` - Full system shutdown
 - `POST /api/setpoint` - Update target temp: `{"temp": 225}`
+- `GET /api/history` - Temperature history for graph (compact array format)
+
+**`/api/status` response includes PID object** (added in v1.4.0):
+```json
+{
+  "temp": 225.3, "setpoint": 225.0, "state": "Running",
+  "auger": true, "fan": true, "igniter": false,
+  "runtime": 3600, "errors": 0, "version": "1.4.0", "heap": 124000,
+  "pid": {
+    "p": "0.5750", "i": "0.0230", "d": "-0.0120",
+    "output": "58.6", "error": "-4.5",
+    "cycleRemaining": 12500, "augerOn": true,
+    "lidOpen": false, "reigniteAttempts": 0
+  }
+}
+```
 
 ### Debug/Testing Endpoints
 - `GET /api/debug/status` - Get debug mode status: `{"debugMode": true/false}`
@@ -253,6 +307,12 @@ Gains are auto-calculated: Kp = -1/PB = -0.0167, Ki = Kp/Ti = -0.0000926, Kd = K
 - `home/smoker/sensor/auger` - "on" or "off"
 - `home/smoker/sensor/fan` - "on" or "off"
 - `home/smoker/sensor/igniter` - "on" or "off"
+- `home/smoker/sensor/pid_p` - PID proportional term
+- `home/smoker/sensor/pid_i` - PID integral term
+- `home/smoker/sensor/pid_d` - PID derivative term
+- `home/smoker/sensor/pid_output` - PID output (0-100%)
+- `home/smoker/sensor/lid_open` - "ON" or "OFF" (binary_sensor, v1.4.0)
+- `home/smoker/sensor/reignite_attempts` - Reignite attempt counter (v1.4.0)
 
 ### Subscribed (commands)
 - `home/smoker/command/start` - Payload: temperature (float)
@@ -299,6 +359,7 @@ These translate to calculated gains:
 3. **Derivative on Measurement**: Prevents "derivative kick" when setpoint changes
 4. **Conservative Anti-Windup**: Limits integral contribution to 50% of output range
 5. **Minimum Maintenance**: 15% minimum auger duty cycle keeps fire alive
+6. **Lid-Open Integral Freeze** (v1.4.0): Integral accumulation pauses during lid-open events to prevent windup
 
 ### Tuning Tips
 
@@ -384,6 +445,7 @@ Edit `include/secrets.h` (copy from `secrets.h.example` if it doesn't exist):
 - `MQTT_BROKER_HOST`, `MQTT_USERNAME`, `MQTT_PASSWORD` — MQTT broker
 - `OTA_PASSWORD` — Over-the-air update password
 - `SYSLOG_SERVER` — Remote logging server IP
+- `GITHUB_PAT` — GitHub Personal Access Token for HTTP OTA from private repos (v1.4.0)
 
 **Never edit credentials in `config.h`** — it's committed to git. All secrets go in `secrets.h` which is gitignored. Config.h has `#ifndef` fallbacks with placeholder values so the project compiles without `secrets.h`.
 
@@ -440,6 +502,8 @@ The ESP32 periodically checks GitHub Releases for new firmware versions and auto
 3. Compares semver with `FIRMWARE_VERSION` in config.h
 4. If newer and smoker is idle → downloads `firmware.bin` and flashes
 
+**Private repo support** (v1.4.0): If `GITHUB_PAT` is defined in `secrets.h`, it's sent as an `Authorization: token <PAT>` header with all GitHub API requests. Uses `HTTPUpdateRequestCB` callback to inject auth headers into the HTTPUpdate library. Without a PAT, private repos return 404.
+
 **Configuration** (`config.h`):
 ```cpp
 #define ENABLE_HTTP_OTA          true
@@ -447,6 +511,14 @@ The ESP32 periodically checks GitHub Releases for new firmware versions and auto
 #define HTTP_OTA_FAST_INTERVAL   60000UL     // 60s (dev/testing mode)
 #define HTTP_OTA_BOOT_DELAY      60000UL     // 60s after boot
 #define HTTP_OTA_URL_BASE        "https://github.com/briangunderson/ESP32Smoker/releases/latest/download"
+
+// In secrets.h (not committed):
+#define GITHUB_PAT  "ghp_xxxxxxxxxxxx"  // Fine-grained PAT with Contents:read scope
+
+// Fallback in config.h:
+#ifndef GITHUB_PAT
+  #define GITHUB_PAT ""  // Empty = no auth (works for public repos)
+#endif
 ```
 
 **Web UI:** "Check for Updates" and "Fast OTA" toggle buttons in Debug panel, firmware version in Info card. Fast OTA switches the check interval from 6 hours to 60 seconds for active development.
@@ -554,6 +626,53 @@ The infrastructure is designed to be modular and reusable for other ESP32 projec
 - `logging/elasticsearch/` - All ES configs (templates, pipelines, watchers)
 - `logging/kibana/` - All Kibana configs (visualizations, dashboard)
 
+## PID Visualization Page (v1.4.0)
+
+The web UI includes a dedicated PID Visualizer tab with real-time animated diagrams powered by live PID data from `/api/status`. All rendering is Canvas-based with DPR awareness. History is kept in browser-side JS ring buffer (300 samples, ~10 min at 2s polling) — zero firmware memory cost.
+
+### Components
+
+1. **Animated PID Block Diagram** (top)
+   - Classic control theory layout: Setpoint → Σ → Error → [P][I][D] → Σ → Output → [Smoker] → Temp → feedback
+   - Animated flow dots showing signal direction
+   - Live values at each node (error, P/I/D terms, output %)
+   - Color-coded: green (stable), orange (correcting), red (saturated)
+
+2. **PID Terms Breakdown** (middle-left)
+   - Stacked horizontal bar: P (blue) + I (green) + D (orange) = Output (white)
+   - Shows 0.5 centering offset visually
+   - Numeric values update in real-time
+
+3. **Auger Duty Cycle Gauge** (middle-right)
+   - Circular arc gauge showing PID output as duty cycle percentage
+   - Animated cycle position tick (20s cycle)
+   - Shows auger ON/OFF state and cycle time remaining
+
+4. **Status Indicators** (middle)
+   - Lid Open indicator (red glow animation when active)
+   - Reignite Attempts counter
+   - PID Saturated warning
+
+5. **PID Time-Series Chart** (bottom)
+   - 4 overlaid lines: P (blue), I (green), D (orange), Output (white)
+   - Auto-scrolling time axis
+   - Range buttons: 2m / 5m / 10m
+   - Canvas-based with DPR awareness
+
+### Tab System
+- Tab bar with "Dashboard" and "PID Visualizer" buttons
+- Only active tab's content is visible (`display: none` toggling)
+- PID canvases only render when PID tab is active (saves CPU)
+- Window resize re-draws active tab's canvases
+
+### Home Assistant PID Analysis View
+The HA GunderGrill dashboard includes a "PID Analysis" view (4th view) with:
+- Iframe embedding the ESP32's PID Visualizer tab (for animated block diagram)
+- ApexCharts: PID output composition over 1 hour (P, I, D, output lines)
+- ApexCharts: Temperature vs setpoint with error tracking
+- Mushroom cards: Lid open status, reignite attempts, PID output gauge
+- Live PID values entities card
+
 ## Debug/Testing Features
 
 The web interface includes a collapsible Debug/Testing panel with tools for hardware testing and troubleshooting.
@@ -642,7 +761,7 @@ MQTT broker connection uses username/password authentication:
 
 ### Implemented Features
 - ✅ OTA (Over-The-Air) firmware and filesystem updates
-- ✅ HTTP OTA (Pull-based updates from GitHub Releases)
+- ✅ HTTP OTA (Pull-based updates from GitHub Releases, with PAT auth for private repos)
 - ✅ GitHub Actions CI/CD (build on push, release on tag)
 - ✅ Debug mode with manual relay control
 - ✅ Temperature override for testing
@@ -651,20 +770,23 @@ MQTT broker connection uses username/password authentication:
 - ✅ PID control with Proportional Band method (from PiSmoker)
 - ✅ Syslog remote logging
 - ✅ Temperature history graph in web UI
+- ✅ Reignite logic — auto-recovery from dead fire (4-phase, max 3 attempts) (v1.4.0)
+- ✅ Lid-open detection — derivative-based, freezes PID integral (v1.4.0)
+- ✅ PID data in REST API — P, I, D, output, error, cycle info in `/api/status` (v1.4.0)
+- ✅ PID Visualization page — interactive Canvas-based block diagram, terms bar, auger gauge, time-series chart (v1.4.0)
+- ✅ HA PID Analysis dashboard view — apexcharts, mushroom cards, iframe embed (v1.4.0)
+- ✅ Tab-based web UI — Dashboard + PID Visualizer tabs (v1.4.0)
 
 ### Not Yet Implemented
 - Full persistent configuration storage (PID integral persists, but other settings reset on reboot)
-- Temperature history logging
 - Multiple temperature probes
-- Data charts/graphs in web UI
-- Reignite logic (automatic recovery if fire dies)
-- Lid-open detection
+- Captive portal for WiFi setup
 
 ### Current Behavior
 - PID integral term persists across reboots (NVS); other settings reset on reboot
-- Single temperature probe only
+- Single temperature probe only (user uses ChefIQ for meat tracking)
 - Manual WiFi configuration (no captive portal)
-- Basic web UI (functional but not fancy)
+- Web UI has 2-tab interface: Dashboard (main controls/chart) and PID Visualizer (animated diagrams)
 
 ## Testing Checklist
 
@@ -685,6 +807,14 @@ Before deploying to actual hardware:
 14. [ ] Test emergency stop scenarios
 15. [ ] Verify thermal limits trigger correctly
 16. [ ] Test physical buttons work in parallel with web interface
+17. [ ] Test reignite logic via debug mode (override temp < 140°F with PID at max)
+18. [ ] Test lid-open detection via debug mode (rapidly drop temp override)
+19. [ ] Verify PID data appears in `/api/status` response
+20. [ ] Verify PID Visualizer tab renders animated block diagram
+21. [ ] Verify PID time-series chart accumulates data points
+22. [ ] Verify MQTT publishes `lid_open` and `reignite_attempts` topics
+23. [ ] Verify HA PID Analysis dashboard view loads correctly
+24. [ ] Test HTTP OTA check with GITHUB_PAT configured (private repo)
 
 ## Troubleshooting Quick Reference
 
