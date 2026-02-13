@@ -42,15 +42,28 @@ private:
   const char* _rootTopic;
 
   uint32_t _lastPublish;
+  uint32_t _lastTelemetry;
   bool _subscribed;
+  bool _discoveryPublished;
+
+  // Static instance for callback routing
+  static MQTTClient* _instance;
 
   // Topic management
   void subscribe();
   void setupTopics();
 
   // MQTT message handlers
-  static void messageCallback(char* topic, byte* payload,
-                              unsigned int length);
+  static void staticCallback(char* topic, byte* payload, unsigned int length);
+  void handleMessage(char* topic, byte* payload, unsigned int length);
+
+  // Home Assistant MQTT Discovery
+  void publishDiscovery();
+  void publishDiscoveryEntity(const char* component, const char* objectId,
+                              const char* payload);
+
+  // Extended telemetry
+  void publishTelemetry();
 };
 
 #endif // MQTT_CLIENT_H
