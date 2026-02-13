@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchHistory();
   updateStatus();
   setInterval(updateStatus, POLL_MS);
-  window.addEventListener('resize', drawGraph);
+  window.addEventListener('resize', function() { drawGraph(); if (document.getElementById('tab-pid') && document.getElementById('tab-pid').classList.contains('active')) { drawPidDiagram(); drawPidTermsBar(); drawAugerGauge(); drawPidChart(); } });
   checkVersionStatus();
 });
 
@@ -143,13 +143,19 @@ function updateUI(s) {
     spInput.value = sp.toFixed(0);
   }
 
+  // Record PID data and update PID tab if visible
+  recordPidSample(s);
+  if (document.getElementById('tab-pid') && document.getElementById('tab-pid').classList.contains('active')) {
+    updatePidVisuals(s);
+  }
+
   // Append to graph
   appendGraphPoint(s);
 }
 
 // --- Temperature Graph ---
-const STATE_NAMES = ['Idle','Startup','Running','Cooldown','Shutdown','Error'];
-const STATE_COLORS = ['#555','#ff6b35','#2ecc71','#3498db','#f1c40f','#e74c3c'];
+const STATE_NAMES = ['Idle','Startup','Running','Cooldown','Shutdown','Error','Reignite'];
+const STATE_COLORS = ['#555','#ff6b35','#2ecc71','#3498db','#f1c40f','#e74c3c','#e67e22'];
 
 async function fetchHistory() {
   try {
@@ -568,4 +574,600 @@ function updateFastOtaBtn(active) {
   if (!btn) return;
   btn.textContent = 'Fast OTA: ' + (active ? 'On' : 'Off');
   if (active) btn.classList.add('active'); else btn.classList.remove('active');
+}
+
+// --- Tab System ---
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  if (tab === 'pid') {
+    document.querySelectorAll('.tab-btn')[1].classList.add('active');
+    var el = document.getElementById('tab-pid');
+    el.style.display = 'block';
+    el.classList.add('active');
+    document.getElementById('tab-dashboard').classList.remove('active');
+    document.getElementById('tab-dashboard').style.display = 'none';
+    // Trigger initial draw
+    requestAnimationFrame(function() { drawPidDiagram(); drawPidTermsBar(); drawAugerGauge(); drawPidChart(); });
+  } else {
+    document.querySelectorAll('.tab-btn')[0].classList.add('active');
+    var el = document.getElementById('tab-dashboard');
+    el.style.display = 'block';
+    el.classList.add('active');
+    document.getElementById('tab-pid').classList.remove('active');
+    document.getElementById('tab-pid').style.display = 'none';
+    requestAnimationFrame(drawGraph);
+  }
+}
+
+// --- PID History (JS-side ring buffer) ---
+var pidHistory = [];  // {t, p, i, d, out, temp, sp, err}
+var pidRangeSec = 120;
+var PID_MAX_SAMPLES = 300;  // 10 minutes at 2s polling
+var pidLastData = { p: 0, i: 0, d: 0, output: 0, error: 0, cycleRemaining: 0, augerOn: false, lidOpen: false, reigniteAttempts: 0 };
+
+function recordPidSample(s) {
+  if (!s.pid) return;
+  pidLastData = s.pid;
+  var now = Date.now() / 1000;
+  pidHistory.push({
+    t: now,
+    p: parseFloat(s.pid.p) || 0,
+    i: parseFloat(s.pid.i) || 0,
+    d: parseFloat(s.pid.d) || 0,
+    out: parseFloat(s.pid.output) || 0,
+    temp: s.temp,
+    sp: s.setpoint,
+    err: parseFloat(s.pid.error) || 0
+  });
+  while (pidHistory.length > PID_MAX_SAMPLES) pidHistory.shift();
+}
+
+function setPidRange(sec) {
+  pidRangeSec = sec;
+  var btns = document.querySelectorAll('#pid-range-btns button');
+  btns.forEach(function(b) { b.classList.remove('active'); });
+  var vals = [120, 300, 600];
+  var idx = vals.indexOf(sec);
+  if (idx >= 0 && btns[idx]) btns[idx].classList.add('active');
+  drawPidChart();
+}
+
+// --- PID Visual Updates ---
+function updatePidVisuals(s) {
+  if (!s.pid) return;
+  var pid = s.pid;
+
+  // Update numeric values
+  document.getElementById('pv-p').textContent = parseFloat(pid.p).toFixed(3);
+  document.getElementById('pv-i').textContent = parseFloat(pid.i).toFixed(3);
+  document.getElementById('pv-d').textContent = parseFloat(pid.d).toFixed(3);
+  document.getElementById('pv-out').textContent = parseFloat(pid.output).toFixed(1) + '%';
+  document.getElementById('pv-duty').textContent = parseFloat(pid.output).toFixed(0) + '%';
+  var remaining = Math.max(0, Math.round((parseInt(pid.cycleRemaining) || 0) / 1000));
+  document.getElementById('pv-cycle').textContent = remaining + 's';
+  document.getElementById('pv-reignite').textContent = pid.reigniteAttempts || 0;
+
+  // Status indicators
+  var lidInd = document.getElementById('pid-ind-lid');
+  if (pid.lidOpen) lidInd.classList.add('active'); else lidInd.classList.remove('active');
+
+  var reigniteInd = document.getElementById('pid-ind-reignite');
+  if ((pid.reigniteAttempts || 0) > 0) reigniteInd.classList.add('active'); else reigniteInd.classList.remove('active');
+
+  var satInd = document.getElementById('pid-ind-saturated');
+  if (parseFloat(pid.output) >= 99.5 || parseFloat(pid.output) <= 15.5) satInd.classList.add('active'); else satInd.classList.remove('active');
+
+  // Redraw canvases
+  drawPidDiagram();
+  drawPidTermsBar();
+  drawAugerGauge();
+  drawPidChart();
+}
+
+// --- PID Block Diagram (Canvas) ---
+function drawPidDiagram() {
+  var canvas = document.getElementById('pid-block-diagram');
+  if (!canvas) return;
+  var dpr = window.devicePixelRatio || 1;
+  var rect = canvas.getBoundingClientRect();
+  var W = rect.width, H = rect.height;
+  if (W === 0 || H === 0) return;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  var pid = pidLastData;
+  var p = parseFloat(pid.p) || 0;
+  var i = parseFloat(pid.i) || 0;
+  var d = parseFloat(pid.d) || 0;
+  var out = parseFloat(pid.output) || 0;
+  var err = parseFloat(pid.error) || 0;
+
+  // Clear
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W, H);
+
+  // Layout
+  var cy = H / 2;           // vertical center
+  var margin = 16;
+  var boxH = 36;
+  var boxW = 56;
+  var sumR = 14;             // summing junction radius
+
+  // Positions (left to right flow)
+  var xSp = margin + 30;            // setpoint label
+  var xSum = xSp + 60;              // summing junction
+  var xPID = xSum + 65;             // PID block center
+  var xOut = xPID + boxW/2 + 50;    // output label
+  var xPlant = xOut + 50;           // plant block
+  var xTemp = Math.min(xPlant + boxW/2 + 40, W - margin - 20);  // temp output
+
+  // Flow arrow color based on output
+  var flowColor = out > 80 ? '#e74c3c' : out > 40 ? '#ff6b35' : '#2ecc71';
+  var animPhase = (Date.now() % 2000) / 2000;  // 0-1 animation phase
+
+  // Helper: draw block
+  function drawBlock(x, y, w, h, label, value, color) {
+    ctx.fillStyle = hexAlpha(color, 0.15);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(x - w/2, y - h/2, w, h, 4);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#999';
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x, y - 5);
+    ctx.fillStyle = color;
+    ctx.font = 'bold 12px SF Mono, Consolas, monospace';
+    ctx.fillText(value, x, y + 10);
+  }
+
+  // Helper: draw arrow
+  function drawArrow(x1, y1, x2, y2, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    // Arrowhead
+    var angle = Math.atan2(y2 - y1, x2 - x1);
+    var aLen = 6;
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - aLen * Math.cos(angle - 0.4), y2 - aLen * Math.sin(angle - 0.4));
+    ctx.lineTo(x2 - aLen * Math.cos(angle + 0.4), y2 - aLen * Math.sin(angle + 0.4));
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+
+  // Helper: animated flow dots
+  function drawFlowDots(x1, y1, x2, y2, color) {
+    var dx = x2 - x1, dy = y2 - y1;
+    var len = Math.sqrt(dx*dx + dy*dy);
+    var dots = 3;
+    for (var j = 0; j < dots; j++) {
+      var t = ((animPhase + j / dots) % 1);
+      var fx = x1 + dx * t, fy = y1 + dy * t;
+      ctx.beginPath();
+      ctx.arc(fx, fy, 2, 0, Math.PI * 2);
+      ctx.fillStyle = hexAlpha(color, 0.4 + 0.4 * Math.sin(t * Math.PI));
+      ctx.fill();
+    }
+  }
+
+  // --- Draw the diagram ---
+
+  // Setpoint label
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 13px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('SP', xSp, cy - 10);
+  ctx.fillStyle = '#aaa';
+  ctx.font = '11px SF Mono, Consolas, monospace';
+  ctx.fillText((parseFloat(pidLastData.error) ? (parseFloat(pidLastData.error) + (pidHistory.length > 0 ? pidHistory[pidHistory.length-1].sp : 225)).toFixed(0) : '--') + '\u00B0', xSp, cy + 6);
+
+  // Arrow: SP -> Sum
+  drawArrow(xSp + 20, cy, xSum - sumR, cy, '#888');
+  drawFlowDots(xSp + 20, cy, xSum - sumR, cy, '#888');
+
+  // Summing junction (circle with +/-)
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(xSum, cy, sumR, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#aaa';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('+', xSum - 5, cy - 2);
+  ctx.fillText('\u2013', xSum + 6, cy + 10);
+
+  // Error value below summing junction
+  ctx.fillStyle = err > 0 ? '#e74c3c' : err < 0 ? '#3498db' : '#888';
+  ctx.font = '10px SF Mono, Consolas, monospace';
+  ctx.fillText('e=' + err.toFixed(1), xSum, cy + sumR + 14);
+
+  // Arrow: Sum -> PID
+  drawArrow(xSum + sumR, cy, xPID - boxW/2, cy, flowColor);
+  drawFlowDots(xSum + sumR, cy, xPID - boxW/2, cy, flowColor);
+
+  // PID Block (show 3 sub-blocks stacked)
+  var pidTop = cy - 46;
+  var pidBlockH = 28;
+  var pidGap = 4;
+  // P block
+  drawBlock(xPID, pidTop + pidBlockH/2, boxW, pidBlockH, 'P', p.toFixed(3), '#3498db');
+  // I block
+  drawBlock(xPID, pidTop + pidBlockH + pidGap + pidBlockH/2, boxW, pidBlockH, 'I', i.toFixed(3), '#2ecc71');
+  // D block
+  drawBlock(xPID, pidTop + 2*(pidBlockH + pidGap) + pidBlockH/2, boxW, pidBlockH, 'D', d.toFixed(3), '#ff6b35');
+
+  // Sum symbol after PID blocks
+  var xPidSum = xPID + boxW/2 + 20;
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(xPidSum, cy, 8, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#aaa';
+  ctx.font = '10px sans-serif';
+  ctx.fillText('\u03A3', xPidSum, cy + 3);
+
+  // Lines from P/I/D to sum circle
+  var pBlockRight = xPID + boxW/2;
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1;
+  [pidTop + pidBlockH/2, pidTop + pidBlockH + pidGap + pidBlockH/2, pidTop + 2*(pidBlockH + pidGap) + pidBlockH/2].forEach(function(by) {
+    ctx.beginPath();
+    ctx.moveTo(pBlockRight, by);
+    ctx.lineTo(xPidSum - 8, cy);
+    ctx.stroke();
+  });
+
+  // Arrow: PID Sum -> Output
+  drawArrow(xPidSum + 8, cy, xOut - 16, cy, flowColor);
+  drawFlowDots(xPidSum + 8, cy, xOut - 16, cy, flowColor);
+
+  // Output value
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 14px SF Mono, Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(out.toFixed(1) + '%', xOut, cy - 2);
+  ctx.fillStyle = '#666';
+  ctx.font = '9px -apple-system, sans-serif';
+  ctx.fillText('OUTPUT', xOut, cy + 12);
+
+  // Arrow: Output -> Plant
+  drawArrow(xOut + 26, cy, xPlant - boxW/2, cy, flowColor);
+
+  // Plant block (Smoker)
+  drawBlock(xPlant, cy, boxW + 8, boxH + 4, 'SMOKER', '', '#666');
+  // Draw a small flame icon inside
+  ctx.fillStyle = out > 50 ? '#ff6b35' : out > 20 ? '#ff9f43' : '#666';
+  ctx.font = '16px sans-serif';
+  ctx.fillText('\uD83D\uDD25', xPlant, cy + 4);
+
+  // Arrow: Plant -> Temp
+  drawArrow(xPlant + boxW/2 + 4, cy, xTemp, cy, '#ff6b35');
+
+  // Temperature output
+  ctx.fillStyle = '#ff6b35';
+  ctx.font = 'bold 14px SF Mono, Consolas, monospace';
+  ctx.textAlign = 'center';
+  var curTemp = pidHistory.length > 0 ? pidHistory[pidHistory.length - 1].temp : 0;
+  ctx.fillText(curTemp ? curTemp.toFixed(0) + '\u00B0' : '--', xTemp, cy - 2);
+  ctx.fillStyle = '#666';
+  ctx.font = '9px -apple-system, sans-serif';
+  ctx.fillText('TEMP', xTemp, cy + 12);
+
+  // Feedback loop (bottom)
+  var fbY = cy + 60;
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(xTemp, cy + 8);
+  ctx.lineTo(xTemp, fbY);
+  ctx.lineTo(xSum, fbY);
+  ctx.lineTo(xSum, cy + sumR);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Feedback label
+  ctx.fillStyle = '#555';
+  ctx.font = '9px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('feedback', (xTemp + xSum) / 2, fbY - 4);
+  // Negative sign at feedback entry
+  ctx.fillStyle = '#e74c3c';
+  ctx.font = 'bold 10px sans-serif';
+  ctx.fillText('\u2013', xSum + 8, cy + sumR + 4);
+}
+
+// --- PID Terms Breakdown Bar ---
+function drawPidTermsBar() {
+  var canvas = document.getElementById('pid-terms-bar');
+  if (!canvas) return;
+  var dpr = window.devicePixelRatio || 1;
+  var rect = canvas.getBoundingClientRect();
+  var W = rect.width, H = rect.height;
+  if (W === 0 || H === 0) return;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W, H);
+
+  var pid = pidLastData;
+  var p = parseFloat(pid.p) || 0;
+  var i = parseFloat(pid.i) || 0;
+  var d = parseFloat(pid.d) || 0;
+  var out = parseFloat(pid.output) || 0;
+
+  var barH = 18;
+  var barY = (H - barH) / 2;
+  var barMargin = 8;
+  var barW = W - barMargin * 2;
+
+  // Background bar (0-100% scale)
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.roundRect(barMargin, barY, barW, barH, 4);
+  ctx.fill();
+
+  // The PID output is the sum: output = (P + I + D + 0.5) * 100, clamped 15-100
+  // Show each term as a proportion of the total
+  // P, I, D can be negative. Map them relative to the output bar.
+  // Simpler approach: show output as filled bar with colored segments
+  var fillW = (out / 100) * barW;
+
+  // Proportions of P, I, D relative to their absolute sum
+  var absSum = Math.abs(p) + Math.abs(i) + Math.abs(d) + 0.001;
+  var pFrac = Math.abs(p) / absSum;
+  var iFrac = Math.abs(i) / absSum;
+  var dFrac = 1 - pFrac - iFrac;
+
+  var x = barMargin;
+  var pW = fillW * pFrac;
+  var iW = fillW * iFrac;
+  var dW = fillW * dFrac;
+
+  // Draw segments with rounded ends
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(barMargin, barY, barW, barH, 4);
+  ctx.clip();
+
+  ctx.fillStyle = '#3498db';
+  ctx.fillRect(x, barY, pW, barH);
+  x += pW;
+  ctx.fillStyle = '#2ecc71';
+  ctx.fillRect(x, barY, iW, barH);
+  x += iW;
+  ctx.fillStyle = '#ff6b35';
+  ctx.fillRect(x, barY, dW, barH);
+  ctx.restore();
+
+  // Center line at 50% (the PID centering offset)
+  var cx = barMargin + barW * 0.5;
+  ctx.strokeStyle = '#fff';
+  ctx.globalAlpha = 0.3;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 2]);
+  ctx.beginPath();
+  ctx.moveTo(cx, barY - 2);
+  ctx.lineTo(cx, barY + barH + 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+
+  // Output percentage text
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 10px SF Mono, Consolas, monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(out.toFixed(1) + '%', barMargin + fillW - 4, barY + barH/2 + 3.5);
+}
+
+// --- Auger Duty Cycle Gauge ---
+function drawAugerGauge() {
+  var canvas = document.getElementById('pid-auger-gauge');
+  if (!canvas) return;
+  var dpr = window.devicePixelRatio || 1;
+  var rect = canvas.getBoundingClientRect();
+  var W = rect.width, H = rect.height;
+  if (W === 0 || H === 0) return;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W, H);
+
+  var pid = pidLastData;
+  var out = parseFloat(pid.output) || 0;
+  var cycleRemaining = parseInt(pid.cycleRemaining) || 0;
+  var augerOn = pid.augerOn;
+
+  var cx = W / 2;
+  var cy = H / 2;
+  var r = Math.min(W, H) / 2 - 12;
+
+  // Background ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 10;
+  ctx.stroke();
+
+  // Fill arc (duty cycle percentage)
+  var fillAngle = (out / 100) * Math.PI * 2;
+  var startAngle = -Math.PI / 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startAngle, startAngle + fillAngle);
+  ctx.strokeStyle = augerOn ? '#2ecc71' : '#ff6b35';
+  ctx.lineWidth = 10;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Cycle progress tick (shows where in the 20s cycle we are)
+  var cycleTotal = 20000; // 20 seconds
+  var cycleElapsed = cycleTotal - cycleRemaining;
+  var tickAngle = startAngle + (cycleElapsed / cycleTotal) * Math.PI * 2;
+  var tickR = r + 8;
+  ctx.beginPath();
+  ctx.arc(cx + tickR * Math.cos(tickAngle), cy + tickR * Math.sin(tickAngle), 3, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+
+  // Center text
+  ctx.fillStyle = augerOn ? '#2ecc71' : '#ff6b35';
+  ctx.font = 'bold 22px SF Mono, Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(out.toFixed(0) + '%', cx, cy - 6);
+
+  ctx.fillStyle = '#666';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.fillText(augerOn ? 'AUGER ON' : 'AUGER OFF', cx, cy + 14);
+  ctx.textBaseline = 'alphabetic';
+}
+
+// --- PID History Time-Series Chart ---
+function drawPidChart() {
+  var canvas = document.getElementById('pid-history-chart');
+  if (!canvas) return;
+  var dpr = window.devicePixelRatio || 1;
+  var rect = canvas.getBoundingClientRect();
+  var W = rect.width, H = rect.height;
+  if (W === 0 || H === 0) return;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W, H);
+
+  if (pidHistory.length < 2) {
+    ctx.fillStyle = '#555';
+    ctx.font = '13px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Collecting PID data\u2026', W / 2, H / 2);
+    return;
+  }
+
+  var padL = 42, padR = 12, padT = 14, padB = 24;
+  var gW = W - padL - padR;
+  var gH = H - padT - padB;
+
+  // Time range
+  var tMax = pidHistory[pidHistory.length - 1].t;
+  var tMin = tMax - pidRangeSec;
+
+  // Filter to visible range
+  var vis = pidHistory.filter(function(s) { return s.t >= tMin; });
+  if (vis.length < 2) {
+    ctx.fillStyle = '#555';
+    ctx.font = '13px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Collecting PID data\u2026', W / 2, H / 2);
+    return;
+  }
+
+  // Y-axis: PID output 0-100% (left axis)
+  var yMin = 0, yMax = 100;
+
+  function tx(t) { return padL + (t - tMin) / (tMax - tMin) * gW; }
+  function ty(v) { return padT + (1 - (v - yMin) / (yMax - yMin)) * gH; }
+
+  // Grid
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 0.5;
+  for (var v = 0; v <= 100; v += 25) {
+    var y = ty(v);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+    ctx.fillStyle = '#666';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(v + '%', padL - 4, y + 3);
+  }
+
+  // X grid
+  ctx.textAlign = 'center';
+  var xStep = pidRangeSec <= 120 ? 30 : pidRangeSec <= 300 ? 60 : 120;
+  for (var t = Math.ceil(tMin / xStep) * xStep; t <= tMax; t += xStep) {
+    var x = tx(t);
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + gH); ctx.stroke();
+    ctx.fillStyle = '#666';
+    ctx.font = '10px -apple-system, sans-serif';
+    var ago = tMax - t;
+    ctx.fillText(ago < 5 ? 'now' : fmtAgo(ago), x, H - 4);
+  }
+
+  // Helper: draw line
+  function drawLine(data, key, color, scale, offset) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    var started = false;
+    for (var i = 0; i < data.length; i++) {
+      var val = data[i][key] * (scale || 1) + (offset || 0);
+      var x = tx(data[i].t);
+      var y = ty(val);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Draw lines: Output (white, directly 0-100)
+  drawLine(vis, 'out', 'rgba(255,255,255,0.9)', 1, 0);
+
+  // PID terms: scale to visible range. Terms are typically -0.5 to +0.5
+  // Map them: value * 100 + 50 so that 0 maps to 50% on chart
+  ctx.globalAlpha = 0.7;
+  // P (blue)
+  ctx.strokeStyle = '#3498db';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  var started = false;
+  for (var i = 0; i < vis.length; i++) {
+    var val = vis[i].p * 100 + 50;
+    val = Math.max(0, Math.min(100, val));
+    var x = tx(vis[i].t), y = ty(val);
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // I (green)
+  ctx.strokeStyle = '#2ecc71';
+  ctx.beginPath();
+  started = false;
+  for (var i = 0; i < vis.length; i++) {
+    var val = vis[i].i * 100 + 50;
+    val = Math.max(0, Math.min(100, val));
+    var x = tx(vis[i].t), y = ty(val);
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // D (orange)
+  ctx.strokeStyle = '#ff6b35';
+  ctx.beginPath();
+  started = false;
+  for (var i = 0; i < vis.length; i++) {
+    var val = vis[i].d * 100 + 50;
+    val = Math.max(0, Math.min(100, val));
+    var x = tx(vis[i].t), y = ty(val);
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
 }

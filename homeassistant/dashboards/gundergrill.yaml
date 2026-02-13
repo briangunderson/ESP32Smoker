@@ -941,6 +941,8 @@ views:
               - entity: sensor.gundergrill_wifi_signal
               - entity: sensor.gundergrill_uptime
               - entity: sensor.gundergrill_free_memory
+              - entity: binary_sensor.gundergrill_lid_open
+              - entity: sensor.gundergrill_reignite_attempts
               - entity: number.gundergrill_target_temperature
               - type: divider
               - entity: input_number.gundergrill_start_temp
@@ -954,3 +956,212 @@ views:
             url: "http://esp32-smoker.local"
             aspect_ratio: "4:3"
             title: "GunderGrill Web UI"
+
+  # =======================================================================
+  # VIEW 4: PID ANALYSIS
+  # =======================================================================
+  - title: PID Analysis
+    path: pid-analysis
+    icon: mdi:chart-bell-curve-cumulative
+    type: sections
+    max_columns: 2
+    cards: []
+    sections:
+
+      - title: PID Interactive Visualizer
+        type: grid
+        cards:
+
+          # Embedded ESP32 PID Visualizer tab (animated block diagram + charts)
+          - type: iframe
+            url: "http://esp32-smoker.local"
+            aspect_ratio: "3:4"
+            title: "PID Visualizer"
+
+      - title: PID Terms Over Time
+        type: grid
+        cards:
+
+          # Detailed PID terms chart (1h view with all 4 lines)
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: "PID Output Composition"
+              show_states: true
+              colorize_states: true
+            graph_span: 1h
+            apex_config:
+              chart:
+                height: 350
+              stroke:
+                width:
+                  - 3
+                  - 2
+                  - 2
+                  - 2
+                curve: smooth
+              yaxis:
+                - id: output
+                  title:
+                    text: "Output (%)"
+                  min: 0
+                  max: 100
+                  decimalsInFloat: 0
+                - id: terms
+                  opposite: true
+                  title:
+                    text: "PID Term Value"
+                  decimalsInFloat: 3
+              legend:
+                show: true
+                position: top
+              tooltip:
+                shared: true
+            series:
+              - entity: sensor.gundergrill_pid_output
+                name: "Output %"
+                color: "#FFFFFF"
+                stroke_width: 3
+                yaxis_id: output
+                group_by:
+                  func: avg
+                  duration: 15s
+              - entity: sensor.gundergrill_pid_proportional
+                name: "P"
+                color: "#2196F3"
+                stroke_width: 2
+                yaxis_id: terms
+                group_by:
+                  func: avg
+                  duration: 15s
+              - entity: sensor.gundergrill_pid_integral
+                name: "I"
+                color: "#4CAF50"
+                stroke_width: 2
+                yaxis_id: terms
+                group_by:
+                  func: avg
+                  duration: 15s
+              - entity: sensor.gundergrill_pid_derivative
+                name: "D"
+                color: "#FF9800"
+                stroke_width: 2
+                yaxis_id: terms
+                group_by:
+                  func: avg
+                  duration: 15s
+
+          # Temperature vs setpoint with error band
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: "Temperature Control"
+              show_states: true
+              colorize_states: true
+            graph_span: 1h
+            apex_config:
+              chart:
+                height: 250
+              stroke:
+                width:
+                  - 3
+                  - 2
+                curve:
+                  - smooth
+                  - stepline
+              yaxis:
+                - decimalsInFloat: 0
+                  title:
+                    text: "Temperature (°F)"
+              annotations:
+                yaxis:
+                  - y: -5
+                    y2: 5
+                    yAxisIndex: 0
+                    borderColor: transparent
+                    fillColor: "#4CAF50"
+                    opacity: 0.08
+              tooltip:
+                shared: true
+            series:
+              - entity: sensor.gundergrill_temperature
+                name: Temperature
+                color: "#FF9800"
+                stroke_width: 3
+                group_by:
+                  func: avg
+                  duration: 15s
+              - entity: sensor.gundergrill_setpoint
+                name: Setpoint
+                color: "#4CAF50"
+                stroke_width: 2
+                curve: stepline
+                opacity: 0.7
+                group_by:
+                  func: last
+                  duration: 15s
+
+      - title: Status Indicators
+        type: grid
+        cards:
+
+          # Lid open indicator
+          - type: custom:mushroom-entity-card
+            entity: binary_sensor.gundergrill_lid_open
+            name: "Lid Status"
+            icon: mdi:door-open
+            layout: horizontal
+            card_mod:
+              style: |
+                ha-card {
+                  {% if is_state('binary_sensor.gundergrill_lid_open', 'on') %}
+                    --card-primary-color: #F44336;
+                    animation: pulse 1s ease-in-out infinite;
+                  {% else %}
+                    --card-primary-color: #4CAF50;
+                  {% endif %}
+                }
+
+          # Reignite attempts
+          - type: custom:mushroom-entity-card
+            entity: sensor.gundergrill_reignite_attempts
+            name: "Reignite Attempts"
+            icon: mdi:fire-alert
+            layout: horizontal
+            card_mod:
+              style: |
+                ha-card {
+                  {% set attempts = states('sensor.gundergrill_reignite_attempts') | int(0) %}
+                  {% if attempts > 0 %}
+                    --card-primary-color: #FF9800;
+                  {% endif %}
+                }
+
+          # PID Output gauge
+          - type: gauge
+            entity: sensor.gundergrill_pid_output
+            name: "Auger Duty"
+            unit: "%"
+            min: 0
+            max: 100
+            needle: true
+            severity:
+              green: 15
+              yellow: 60
+              red: 85
+
+          # Current PID values
+          - type: entities
+            title: "Live PID Values"
+            show_header_toggle: false
+            entities:
+              - entity: sensor.gundergrill_pid_proportional
+                name: "P (Proportional)"
+              - entity: sensor.gundergrill_pid_integral
+                name: "I (Integral)"
+              - entity: sensor.gundergrill_pid_derivative
+                name: "D (Derivative)"
+              - entity: sensor.gundergrill_pid_output
+                name: "Output (%)"
+              - entity: sensor.gundergrill_temperature_delta
+                name: "Error (°F)"
