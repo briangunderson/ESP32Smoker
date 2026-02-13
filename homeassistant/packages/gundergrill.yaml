@@ -12,297 +12,304 @@
 #   1. Copy this file to your HA config/packages/ directory
 #   2. Ensure packages are enabled in configuration.yaml:
 #        homeassistant:
-#          packages: !include_dir_named packages
+#          packages: !include_dir_merge_named packages
 #   3. Restart Home Assistant
+#
+# NOTE: The top-level 'gundergrill:' key is required because HA uses
+# !include_dir_merge_named which merges file contents directly into the
+# packages dictionary. Without it, domain keys (input_number, template, etc.)
+# would be misinterpreted as package names.
 #
 # =============================================================================
 
-# -----------------------------------------------------------------------------
-# INPUT HELPERS
-# -----------------------------------------------------------------------------
+gundergrill:
 
-input_number:
-  gundergrill_start_temp:
-    name: "GunderGrill Start Temperature"
-    icon: mdi:thermometer
-    min: 150
-    max: 500
-    step: 5
-    unit_of_measurement: "°F"
-    initial: 225
-    mode: slider
+  # ---------------------------------------------------------------------------
+  # INPUT HELPERS
+  # ---------------------------------------------------------------------------
 
-input_boolean:
-  gundergrill_notifications:
-    name: "GunderGrill Notifications"
-    icon: mdi:bell
-    initial: true
+  input_number:
+    gundergrill_start_temp:
+      name: "GunderGrill Start Temperature"
+      icon: mdi:thermometer
+      min: 150
+      max: 500
+      step: 5
+      unit_of_measurement: "°F"
+      initial: 225
+      mode: slider
 
-# -----------------------------------------------------------------------------
-# TEMPLATE SENSORS (derived from MQTT discovery entities)
-# -----------------------------------------------------------------------------
+  input_boolean:
+    gundergrill_notifications:
+      name: "GunderGrill Notifications"
+      icon: mdi:bell
+      initial: true
 
-template:
-  - sensor:
-      - name: "GunderGrill Temperature Delta"
-        unique_id: gundergrill_temp_delta
-        unit_of_measurement: "°F"
-        state_class: measurement
-        icon: mdi:thermometer-chevron-up
-        state: >
-          {% set temp = states('sensor.gundergrill_temperature') | float(0) %}
-          {% set sp = states('sensor.gundergrill_setpoint') | float(0) %}
-          {% if temp > 0 and sp > 0 %}
-            {{ (temp - sp) | round(1) }}
-          {% else %}
-            0
-          {% endif %}
+  # ---------------------------------------------------------------------------
+  # TEMPLATE SENSORS (derived from MQTT discovery entities)
+  # ---------------------------------------------------------------------------
 
-      - name: "GunderGrill Uptime Formatted"
-        unique_id: gundergrill_uptime_formatted
-        icon: mdi:clock-outline
-        state: >
-          {% set s = states('sensor.gundergrill_uptime') | int(0) %}
-          {% set days = (s // 86400) %}
-          {% set hours = (s % 86400) // 3600 %}
-          {% set minutes = (s % 3600) // 60 %}
-          {% if days > 0 %}
-            {{ days }}d {{ hours }}h {{ minutes }}m
-          {% elif hours > 0 %}
-            {{ hours }}h {{ minutes }}m
-          {% else %}
-            {{ minutes }}m
-          {% endif %}
+  template:
+    - sensor:
+        - name: "GunderGrill Temperature Delta"
+          unique_id: gundergrill_temp_delta
+          unit_of_measurement: "°F"
+          state_class: measurement
+          icon: mdi:thermometer-chevron-up
+          state: >
+            {% set temp = states('sensor.gundergrill_temperature') | float(0) %}
+            {% set sp = states('sensor.gundergrill_setpoint') | float(0) %}
+            {% if temp > 0 and sp > 0 %}
+              {{ (temp - sp) | round(1) }}
+            {% else %}
+              0
+            {% endif %}
 
-      - name: "GunderGrill State Icon"
-        unique_id: gundergrill_state_icon
-        icon: >
-          {% set state = states('sensor.gundergrill_state') %}
-          {% if state == 'Idle' %}mdi:sleep
-          {% elif state == 'Startup' %}mdi:rocket-launch
-          {% elif state == 'Running' %}mdi:fire
-          {% elif state == 'Cooldown' %}mdi:snowflake
-          {% elif state == 'Shutdown' %}mdi:power
-          {% elif state == 'Error' %}mdi:alert-circle
-          {% else %}mdi:help-circle
-          {% endif %}
-        state: "{{ states('sensor.gundergrill_state') }}"
+        - name: "GunderGrill Uptime Formatted"
+          unique_id: gundergrill_uptime_formatted
+          icon: mdi:clock-outline
+          state: >
+            {% set s = states('sensor.gundergrill_uptime') | int(0) %}
+            {% set days = (s // 86400) %}
+            {% set hours = (s % 86400) // 3600 %}
+            {% set minutes = (s % 3600) // 60 %}
+            {% if days > 0 %}
+              {{ days }}d {{ hours }}h {{ minutes }}m
+            {% elif hours > 0 %}
+              {{ hours }}h {{ minutes }}m
+            {% else %}
+              {{ minutes }}m
+            {% endif %}
 
-      - name: "GunderGrill WiFi Quality"
-        unique_id: gundergrill_wifi_quality
-        unit_of_measurement: "%"
-        icon: mdi:wifi
-        state: >
-          {% set rssi = states('sensor.gundergrill_wifi_signal') | int(-100) %}
-          {% if rssi >= -50 %}100
-          {% elif rssi <= -100 %}0
-          {% else %}{{ (2 * (rssi + 100)) | int }}
-          {% endif %}
+        - name: "GunderGrill State Icon"
+          unique_id: gundergrill_state_icon
+          icon: >
+            {% set state = states('sensor.gundergrill_state') %}
+            {% if state == 'Idle' %}mdi:sleep
+            {% elif state == 'Startup' %}mdi:rocket-launch
+            {% elif state == 'Running' %}mdi:fire
+            {% elif state == 'Cooldown' %}mdi:snowflake
+            {% elif state == 'Shutdown' %}mdi:power
+            {% elif state == 'Error' %}mdi:alert-circle
+            {% else %}mdi:help-circle
+            {% endif %}
+          state: "{{ states('sensor.gundergrill_state') }}"
 
-      - name: "GunderGrill PID Output Percent"
-        unique_id: gundergrill_pid_output_pct
-        unit_of_measurement: "%"
-        icon: mdi:gauge
-        state: >
-          {{ states('sensor.gundergrill_pid_output') | float(0) | round(1) }}
+        - name: "GunderGrill WiFi Quality"
+          unique_id: gundergrill_wifi_quality
+          unit_of_measurement: "%"
+          icon: mdi:wifi
+          state: >
+            {% set rssi = states('sensor.gundergrill_wifi_signal') | int(-100) %}
+            {% if rssi >= -50 %}100
+            {% elif rssi <= -100 %}0
+            {% else %}{{ (2 * (rssi + 100)) | int }}
+            {% endif %}
 
-  - binary_sensor:
-      - name: "GunderGrill Active"
-        unique_id: gundergrill_active
-        icon: mdi:grill
-        state: >
-          {{ states('sensor.gundergrill_state') in ['Startup', 'Running', 'Cooldown'] }}
+        - name: "GunderGrill PID Output Percent"
+          unique_id: gundergrill_pid_output_pct
+          unit_of_measurement: "%"
+          icon: mdi:gauge
+          state: >
+            {{ states('sensor.gundergrill_pid_output') | float(0) | round(1) }}
 
-# -----------------------------------------------------------------------------
-# SCRIPTS (callable from dashboard buttons and automations)
-# -----------------------------------------------------------------------------
+    - binary_sensor:
+        - name: "GunderGrill Active"
+          unique_id: gundergrill_active
+          icon: mdi:grill
+          state: >
+            {{ states('sensor.gundergrill_state') in ['Startup', 'Running', 'Cooldown'] }}
 
-script:
-  gundergrill_start:
-    alias: "GunderGrill - Start Smoking"
-    icon: mdi:play
-    description: "Start smoking at the configured temperature"
-    sequence:
-      - action: mqtt.publish
-        data:
-          topic: "home/smoker/command/start"
-          payload: "{{ states('input_number.gundergrill_start_temp') | int }}"
+  # ---------------------------------------------------------------------------
+  # SCRIPTS (callable from dashboard buttons and automations)
+  # ---------------------------------------------------------------------------
 
-  gundergrill_stop:
-    alias: "GunderGrill - Stop (Cooldown)"
-    icon: mdi:stop
-    description: "Stop feeding pellets and begin cooldown"
-    sequence:
-      - action: mqtt.publish
-        data:
-          topic: "home/smoker/command/stop"
-          payload: "stop"
+  script:
+    gundergrill_start:
+      alias: "GunderGrill - Start Smoking"
+      icon: mdi:play
+      description: "Start smoking at the configured temperature"
+      sequence:
+        - action: mqtt.publish
+          data:
+            topic: "home/smoker/command/start"
+            payload: "{{ states('input_number.gundergrill_start_temp') | int }}"
 
-  gundergrill_set_temp:
-    alias: "GunderGrill - Set Temperature"
-    icon: mdi:thermometer
-    description: "Update the target temperature"
-    fields:
-      temperature:
-        description: "Target temperature in °F"
-        example: "225"
-        required: true
-        selector:
-          number:
-            min: 150
-            max: 500
-            step: 5
-            unit_of_measurement: "°F"
-    sequence:
-      - action: mqtt.publish
-        data:
-          topic: "home/smoker/command/setpoint"
-          payload: "{{ temperature | int }}"
+    gundergrill_stop:
+      alias: "GunderGrill - Stop (Cooldown)"
+      icon: mdi:stop
+      description: "Stop feeding pellets and begin cooldown"
+      sequence:
+        - action: mqtt.publish
+          data:
+            topic: "home/smoker/command/stop"
+            payload: "stop"
 
-  gundergrill_quick_225:
-    alias: "GunderGrill - Quick Start 225°F"
-    icon: mdi:numeric-2
-    sequence:
-      - action: mqtt.publish
-        data:
-          topic: "home/smoker/command/start"
-          payload: "225"
+    gundergrill_set_temp:
+      alias: "GunderGrill - Set Temperature"
+      icon: mdi:thermometer
+      description: "Update the target temperature"
+      fields:
+        temperature:
+          description: "Target temperature in °F"
+          example: "225"
+          required: true
+          selector:
+            number:
+              min: 150
+              max: 500
+              step: 5
+              unit_of_measurement: "°F"
+      sequence:
+        - action: mqtt.publish
+          data:
+            topic: "home/smoker/command/setpoint"
+            payload: "{{ temperature | int }}"
 
-  gundergrill_quick_250:
-    alias: "GunderGrill - Quick Start 250°F"
-    icon: mdi:numeric-2
-    sequence:
-      - action: mqtt.publish
-        data:
-          topic: "home/smoker/command/start"
-          payload: "250"
+    gundergrill_quick_225:
+      alias: "GunderGrill - Quick Start 225°F"
+      icon: mdi:numeric-2
+      sequence:
+        - action: mqtt.publish
+          data:
+            topic: "home/smoker/command/start"
+            payload: "225"
 
-  gundergrill_quick_275:
-    alias: "GunderGrill - Quick Start 275°F"
-    icon: mdi:numeric-2
-    sequence:
-      - action: mqtt.publish
-        data:
-          topic: "home/smoker/command/start"
-          payload: "275"
+    gundergrill_quick_250:
+      alias: "GunderGrill - Quick Start 250°F"
+      icon: mdi:numeric-2
+      sequence:
+        - action: mqtt.publish
+          data:
+            topic: "home/smoker/command/start"
+            payload: "250"
 
-# -----------------------------------------------------------------------------
-# AUTOMATIONS
-# -----------------------------------------------------------------------------
+    gundergrill_quick_275:
+      alias: "GunderGrill - Quick Start 275°F"
+      icon: mdi:numeric-2
+      sequence:
+        - action: mqtt.publish
+          data:
+            topic: "home/smoker/command/start"
+            payload: "275"
 
-automation:
-  # --- Notifications ---
+  # ---------------------------------------------------------------------------
+  # AUTOMATIONS
+  # ---------------------------------------------------------------------------
 
-  - id: gundergrill_state_change_notify
-    alias: "GunderGrill - State Change Notification"
-    description: "Notify on state transitions"
-    trigger:
-      - platform: state
-        entity_id: sensor.gundergrill_state
-    condition:
-      - condition: state
-        entity_id: input_boolean.gundergrill_notifications
-        state: "on"
-      - condition: template
-        value_template: >
-          {{ trigger.from_state.state not in ['unknown', 'unavailable'] }}
-    action:
-      - action: persistent_notification.create
-        data:
-          title: "GunderGrill"
-          message: >
-            State changed: {{ trigger.from_state.state }} → {{ trigger.to_state.state }}
-            Temperature: {{ states('sensor.gundergrill_temperature') }}°F
-            Setpoint: {{ states('sensor.gundergrill_setpoint') }}°F
+  automation:
+    # --- Notifications ---
 
-  - id: gundergrill_target_reached_notify
-    alias: "GunderGrill - Target Temperature Reached"
-    description: "Notify when temperature reaches setpoint (within 5°F)"
-    trigger:
-      - platform: template
-        value_template: >
-          {% set temp = states('sensor.gundergrill_temperature') | float(0) %}
-          {% set sp = states('sensor.gundergrill_setpoint') | float(0) %}
-          {{ states('sensor.gundergrill_state') == 'Running' and (temp - sp) | abs < 5 }}
-        for:
-          seconds: 30
-    condition:
-      - condition: state
-        entity_id: input_boolean.gundergrill_notifications
-        state: "on"
-    action:
-      - action: persistent_notification.create
-        data:
-          title: "GunderGrill - Target Reached"
-          message: >
-            Temperature has reached {{ states('sensor.gundergrill_temperature') }}°F
-            (target: {{ states('sensor.gundergrill_setpoint') }}°F)
+    - id: gundergrill_state_change_notify
+      alias: "GunderGrill - State Change Notification"
+      description: "Notify on state transitions"
+      trigger:
+        - platform: state
+          entity_id: sensor.gundergrill_state
+      condition:
+        - condition: state
+          entity_id: input_boolean.gundergrill_notifications
+          state: "on"
+        - condition: template
+          value_template: >
+            {{ trigger.from_state.state not in ['unknown', 'unavailable'] }}
+      action:
+        - action: persistent_notification.create
+          data:
+            title: "GunderGrill"
+            message: >
+              State changed: {{ trigger.from_state.state }} → {{ trigger.to_state.state }}
+              Temperature: {{ states('sensor.gundergrill_temperature') }}°F
+              Setpoint: {{ states('sensor.gundergrill_setpoint') }}°F
 
-  - id: gundergrill_error_notify
-    alias: "GunderGrill - Error Alert"
-    description: "Alert on error state"
-    trigger:
-      - platform: state
-        entity_id: sensor.gundergrill_state
-        to: "Error"
-    action:
-      - action: persistent_notification.create
-        data:
-          title: "GunderGrill - ERROR"
-          message: >
-            The smoker has entered an error state!
-            Last temperature: {{ states('sensor.gundergrill_temperature') }}°F
-            Check the device immediately.
+    - id: gundergrill_target_reached_notify
+      alias: "GunderGrill - Target Temperature Reached"
+      description: "Notify when temperature reaches setpoint (within 5°F)"
+      trigger:
+        - platform: template
+          value_template: >
+            {% set temp = states('sensor.gundergrill_temperature') | float(0) %}
+            {% set sp = states('sensor.gundergrill_setpoint') | float(0) %}
+            {{ states('sensor.gundergrill_state') == 'Running' and (temp - sp) | abs < 5 }}
+          for:
+            seconds: 30
+      condition:
+        - condition: state
+          entity_id: input_boolean.gundergrill_notifications
+          state: "on"
+      action:
+        - action: persistent_notification.create
+          data:
+            title: "GunderGrill - Target Reached"
+            message: >
+              Temperature has reached {{ states('sensor.gundergrill_temperature') }}°F
+              (target: {{ states('sensor.gundergrill_setpoint') }}°F)
 
-  - id: gundergrill_high_temp_alert
-    alias: "GunderGrill - High Temperature Alert"
-    description: "Alert when temperature exceeds safe range"
-    trigger:
-      - platform: numeric_state
-        entity_id: sensor.gundergrill_temperature
-        above: 400
-        for:
-          seconds: 30
-    action:
-      - action: persistent_notification.create
-        data:
-          title: "GunderGrill - HIGH TEMPERATURE"
-          message: >
-            Temperature is {{ states('sensor.gundergrill_temperature') }}°F
-            which exceeds 400°F! Check the smoker.
+    - id: gundergrill_error_notify
+      alias: "GunderGrill - Error Alert"
+      description: "Alert on error state"
+      trigger:
+        - platform: state
+          entity_id: sensor.gundergrill_state
+          to: "Error"
+      action:
+        - action: persistent_notification.create
+          data:
+            title: "GunderGrill - ERROR"
+            message: >
+              The smoker has entered an error state!
+              Last temperature: {{ states('sensor.gundergrill_temperature') }}°F
+              Check the device immediately.
 
-  - id: gundergrill_offline_alert
-    alias: "GunderGrill - Device Offline Alert"
-    description: "Alert when smoker goes offline during a cook"
-    trigger:
-      - platform: state
-        entity_id: binary_sensor.gundergrill_active
-        to: "unavailable"
-        for:
-          minutes: 2
-    action:
-      - action: persistent_notification.create
-        data:
-          title: "GunderGrill - OFFLINE"
-          message: >
-            The smoker has gone offline and may have lost power.
-            Check the device immediately.
+    - id: gundergrill_high_temp_alert
+      alias: "GunderGrill - High Temperature Alert"
+      description: "Alert when temperature exceeds safe range"
+      trigger:
+        - platform: numeric_state
+          entity_id: sensor.gundergrill_temperature
+          above: 400
+          for:
+            seconds: 30
+      action:
+        - action: persistent_notification.create
+          data:
+            title: "GunderGrill - HIGH TEMPERATURE"
+            message: >
+              Temperature is {{ states('sensor.gundergrill_temperature') }}°F
+              which exceeds 400°F! Check the smoker.
 
-  # --- Sync start temp input with actual setpoint ---
+    - id: gundergrill_offline_alert
+      alias: "GunderGrill - Device Offline Alert"
+      description: "Alert when smoker goes offline during a cook"
+      trigger:
+        - platform: state
+          entity_id: binary_sensor.gundergrill_active
+          to: "unavailable"
+          for:
+            minutes: 2
+      action:
+        - action: persistent_notification.create
+          data:
+            title: "GunderGrill - OFFLINE"
+            message: >
+              The smoker has gone offline and may have lost power.
+              Check the device immediately.
 
-  - id: gundergrill_sync_setpoint_to_input
-    alias: "GunderGrill - Sync Setpoint to Input"
-    description: "Keep input_number in sync when setpoint changes on device"
-    trigger:
-      - platform: state
-        entity_id: sensor.gundergrill_setpoint
-    condition:
-      - condition: template
-        value_template: >
-          {{ trigger.to_state.state not in ['unknown', 'unavailable'] }}
-    action:
-      - action: input_number.set_value
-        target:
-          entity_id: input_number.gundergrill_start_temp
-        data:
-          value: "{{ trigger.to_state.state | float | int }}"
+    # --- Sync start temp input with actual setpoint ---
+
+    - id: gundergrill_sync_setpoint_to_input
+      alias: "GunderGrill - Sync Setpoint to Input"
+      description: "Keep input_number in sync when setpoint changes on device"
+      trigger:
+        - platform: state
+          entity_id: sensor.gundergrill_setpoint
+      condition:
+        - condition: template
+          value_template: >
+            {{ trigger.to_state.state not in ['unknown', 'unavailable'] }}
+      action:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.gundergrill_start_temp
+          data:
+            value: "{{ trigger.to_state.state | float | int }}"
