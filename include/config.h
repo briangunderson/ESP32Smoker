@@ -88,6 +88,22 @@
 #define PID_SETPOINT_TOLERANCE     20.0     // °F - only restore if setpoint within this range
 #define PID_SAVE_INTERVAL          300000   // ms (5 min) - periodic save during RUNNING
 
+// Reignite Logic (auto-recovery from dead fire)
+#define ENABLE_REIGNITE            true
+#define REIGNITE_TEMP_THRESHOLD    140.0    // °F - below this, fire may be out
+#define REIGNITE_TRIGGER_TIME      120000   // ms - PID maxed for this long triggers reignite
+#define REIGNITE_MAX_ATTEMPTS      3        // Max reignite attempts per cook session
+#define REIGNITE_FAN_CLEAR_TIME    30000    // ms - fan clears ash from firepot
+#define REIGNITE_PREHEAT_TIME      60000    // ms - igniter preheats
+#define REIGNITE_FEED_TIME         30000    // ms - auger feeds fresh pellets
+#define REIGNITE_RECOVERY_TIME     120000   // ms - wait for temp to rise
+
+// Lid-Open Detection (freezes PID integral during lid events)
+#define ENABLE_LID_DETECTION           true
+#define LID_OPEN_DERIVATIVE_THRESHOLD  -2.0    // °F/s - rate of temp drop to trigger
+#define LID_CLOSE_RECOVERY_TIME        30000   // ms - stable before declaring lid closed
+#define LID_OPEN_MIN_DURATION          5000    // ms - minimum to avoid false triggers
+
 // Temperature History (ring buffer for web graph)
 // Budget: ~30KB for history (ESP32-S3 no PSRAM needs ~100KB free for WiFi)
 // 2500 samples × 12 bytes = 30KB → ~14 hours at 20s intervals
@@ -212,11 +228,16 @@
 #define HTTP_OTA_BOOT_DELAY      60000UL     // ms (60s after boot before first check)
 #define HTTP_OTA_URL_BASE        "https://github.com/briangunderson/ESP32Smoker/releases/latest/download"
 
+// GitHub Personal Access Token for private repo OTA (set in secrets.h)
+#ifndef GITHUB_PAT
+  #define GITHUB_PAT ""  // Empty = no auth (works for public repos)
+#endif
+
 // ============================================================================
 // FIRMWARE METADATA
 // ============================================================================
 
-#define FIRMWARE_VERSION  "1.3.0"
+#define FIRMWARE_VERSION  "1.4.0"
 #define FIRMWARE_BUILD    __DATE__ " " __TIME__
 
 #endif // CONFIG_H
