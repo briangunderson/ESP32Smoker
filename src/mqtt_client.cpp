@@ -210,37 +210,46 @@ void MQTTClient::publishStatus(void) {
 
   auto status = _controller->getStatus();
 
-  // Temperature
+  // Build topic prefix once to avoid repeated String allocations
+  String prefix = String(_rootTopic) + "/sensor/";
   char buf[16];
+
+  // Temperature
   snprintf(buf, sizeof(buf), "%.1f", status.currentTemp);
-  _mqttClient.publish((String(_rootTopic) + "/sensor/temperature").c_str(), buf);
+  _mqttClient.publish((prefix + "temperature").c_str(), buf);
 
   // Setpoint
   snprintf(buf, sizeof(buf), "%.1f", status.setpoint);
-  _mqttClient.publish((String(_rootTopic) + "/sensor/setpoint").c_str(), buf);
+  _mqttClient.publish((prefix + "setpoint").c_str(), buf);
 
   // State
-  _mqttClient.publish((String(_rootTopic) + "/sensor/state").c_str(),
+  _mqttClient.publish((prefix + "state").c_str(),
                       _controller->getStateName());
 
+  // Flush TCP buffer so remaining publishes don't get dropped
+  _mqttClient.loop();
+
   // Relay states
-  _mqttClient.publish((String(_rootTopic) + "/sensor/auger").c_str(),
+  _mqttClient.publish((prefix + "auger").c_str(),
                       status.auger ? "ON" : "OFF");
-  _mqttClient.publish((String(_rootTopic) + "/sensor/fan").c_str(),
+  _mqttClient.publish((prefix + "fan").c_str(),
                       status.fan ? "ON" : "OFF");
-  _mqttClient.publish((String(_rootTopic) + "/sensor/igniter").c_str(),
+  _mqttClient.publish((prefix + "igniter").c_str(),
                       status.igniter ? "ON" : "OFF");
+
+  // Flush again before PID batch
+  _mqttClient.loop();
 
   // PID data (only meaningful in RUNNING state, but always publish for graphs)
   auto pid = _controller->getPIDStatus();
   snprintf(buf, sizeof(buf), "%.1f", pid.output * 100.0);
-  _mqttClient.publish((String(_rootTopic) + "/sensor/pid_output").c_str(), buf);
+  _mqttClient.publish((prefix + "pid_output").c_str(), buf);
   snprintf(buf, sizeof(buf), "%.4f", pid.proportionalTerm);
-  _mqttClient.publish((String(_rootTopic) + "/sensor/pid_p").c_str(), buf);
+  _mqttClient.publish((prefix + "pid_p").c_str(), buf);
   snprintf(buf, sizeof(buf), "%.4f", pid.integralTerm);
-  _mqttClient.publish((String(_rootTopic) + "/sensor/pid_i").c_str(), buf);
+  _mqttClient.publish((prefix + "pid_i").c_str(), buf);
   snprintf(buf, sizeof(buf), "%.4f", pid.derivativeTerm);
-  _mqttClient.publish((String(_rootTopic) + "/sensor/pid_d").c_str(), buf);
+  _mqttClient.publish((prefix + "pid_d").c_str(), buf);
 
   if (ENABLE_SERIAL_DEBUG) {
     Serial.printf("[MQTT] Published status - Temp: %.1f°F, State: %s\n",
@@ -339,6 +348,10 @@ void MQTTClient::publishDiscovery() {
       "%s,%s}", _rootTopic, device, avail);
   publishDiscoveryEntity("sensor", "state", payload);
 
+  // Flush TCP buffer between discovery batches (PubSubClient drops messages
+  // if too many large retained publishes happen without processing network I/O)
+  _mqttClient.loop();
+
   // PID Output
   snprintf(payload, sizeof(payload),
       "{\"name\":\"PID Output\","
@@ -383,6 +396,8 @@ void MQTTClient::publishDiscovery() {
       "%s,%s}", _rootTopic, device, avail);
   publishDiscoveryEntity("sensor", "pid_d", payload);
 
+  _mqttClient.loop();
+
   // WiFi RSSI
   snprintf(payload, sizeof(payload),
       "{\"name\":\"WiFi Signal\","
@@ -421,6 +436,8 @@ void MQTTClient::publishDiscovery() {
       "%s,%s}", _rootTopic, device, avail);
   publishDiscoveryEntity("sensor", "free_heap", payload);
 
+  _mqttClient.loop();
+
   // --- BINARY SENSORS ---
 
   // Auger
@@ -449,6 +466,8 @@ void MQTTClient::publishDiscovery() {
       "\"ic\":\"mdi:fire\","
       "%s,%s}", _rootTopic, device, avail);
   publishDiscoveryEntity("binary_sensor", "igniter", payload);
+
+  _mqttClient.loop();
 
   // --- NUMBER (setpoint control) ---
 
