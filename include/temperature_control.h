@@ -14,7 +14,8 @@ enum ControllerState {
   STATE_RUNNING = 2,
   STATE_COOLDOWN = 3,
   STATE_SHUTDOWN = 4,
-  STATE_ERROR = 5
+  STATE_ERROR = 5,
+  STATE_REIGNITE = 6
 };
 
 // Temperature history sample (for web graph)
@@ -104,6 +105,14 @@ public:
   };
   PIDStatus getPIDStatus(void);
 
+  // Reignite status
+  uint8_t getReigniteAttempts(void) { return _reigniteAttempts; }
+  uint8_t getReignitePhase(void) { return _reignitePhase; }
+
+  // Lid-open detection
+  bool isLidOpen(void) { return _lidOpen; }
+  uint32_t getLidOpenDuration(void);
+
   // History access for web graph
   uint16_t getHistoryCount(void);
   const HistorySample& getHistorySampleAt(uint16_t index);  // 0 = oldest
@@ -155,6 +164,17 @@ private:
   uint8_t _eventHead;
   uint8_t _eventCount;
 
+  // Reignite logic
+  uint8_t _reigniteAttempts;     // counter for current cook session
+  uint8_t _reignitePhase;        // 0=fan clear, 1=preheat, 2=feeding, 3=recovery
+  uint32_t _reignitePhaseStart;  // millis timestamp of current phase start
+  uint32_t _pidMaxedSince;       // millis when PID output first hit max (0 = not maxed)
+
+  // Lid-open detection
+  bool _lidOpen;                 // current lid state
+  uint32_t _lidOpenTime;         // millis when lid was detected open
+  uint32_t _lidStableTime;       // millis when temp rate stabilized after lid-open
+
   // Calculated PID gains (from Proportional Band parameters)
   float _Kp;
   float _Ki;
@@ -167,6 +187,7 @@ private:
   void handleCooldownState();
   void handleShutdownState();
   void handleErrorState();
+  void handleReigniteState();
 
   // Control logic
   void updatePID();
@@ -179,6 +200,9 @@ private:
   bool readTemperature();
   void handleSensorError();
   void handleTemperatureError();
+
+  // Lid detection
+  void detectLidOpen();
 
   // Utility
   unsigned long getStateElapsedTime();

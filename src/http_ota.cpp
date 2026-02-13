@@ -101,9 +101,18 @@ String HttpOTA::fetchRemoteVersion() {
     return "";
   }
 
+  // Add GitHub PAT authentication for private repos
+  if (strlen(GITHUB_PAT) > 0) {
+    http.addHeader("Authorization", String("token ") + GITHUB_PAT);
+    http.addHeader("Accept", "application/octet-stream");
+  }
+
   int httpCode = http.GET();
   if (httpCode != HTTP_CODE_OK) {
     _lastError = "HTTP " + String(httpCode);
+    if (httpCode == 404 && strlen(GITHUB_PAT) == 0) {
+      _lastError += " (repo may be private - set GITHUB_PAT in secrets.h)";
+    }
     http.end();
     return "";
   }
@@ -148,12 +157,22 @@ HttpOtaResult HttpOTA::performUpdate() {
   httpUpdate.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
   httpUpdate.rebootOnUpdate(false);  // Reboot manually after logging
 
+  // For private repos, use GitHub API to get the actual download URL
   String url = String(HTTP_OTA_URL_BASE) + "/firmware.bin";
   Serial.printf("[HTTP_OTA] Downloading firmware: %s\n", url.c_str());
   logMessage(LOG_INFO, "HTTP_OTA", "Starting update: %s -> %s",
              _currentVersion.c_str(), _latestVersion.c_str());
 
-  t_httpUpdate_return ret = httpUpdate.update(client, url);
+  // Use request callback to add auth header for private repos
+  t_httpUpdate_return ret;
+  if (strlen(GITHUB_PAT) > 0) {
+    ret = httpUpdate.update(client, url, "", [](HTTPClient* http) {
+      http->addHeader("Authorization", String("token ") + GITHUB_PAT);
+      http->addHeader("Accept", "application/octet-stream");
+    });
+  } else {
+    ret = httpUpdate.update(client, url);
+  }
 
   switch (ret) {
     case HTTP_UPDATE_OK:

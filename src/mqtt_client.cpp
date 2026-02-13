@@ -251,6 +251,15 @@ void MQTTClient::publishStatus(void) {
   snprintf(buf, sizeof(buf), "%.4f", pid.derivativeTerm);
   _mqttClient.publish((prefix + "pid_d").c_str(), buf);
 
+  // Flush before lid/reignite batch
+  _mqttClient.loop();
+
+  // Lid-open and reignite status
+  _mqttClient.publish((prefix + "lid_open").c_str(),
+                      _controller->isLidOpen() ? "ON" : "OFF");
+  snprintf(buf, sizeof(buf), "%d", _controller->getReigniteAttempts());
+  _mqttClient.publish((prefix + "reignite_attempts").c_str(), buf);
+
   if (ENABLE_SERIAL_DEBUG) {
     Serial.printf("[MQTT] Published status - Temp: %.1f°F, State: %s\n",
                   status.currentTemp, _controller->getStateName());
@@ -466,6 +475,28 @@ void MQTTClient::publishDiscovery() {
       "\"ic\":\"mdi:fire\","
       "%s,%s}", _rootTopic, device, avail);
   publishDiscoveryEntity("binary_sensor", "igniter", payload);
+
+  // Lid Open
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"Lid Open\","
+      "\"stat_t\":\"%s/sensor/lid_open\","
+      "\"uniq_id\":\"gundergrill_lid_open\","
+      "\"ic\":\"mdi:door-open\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("binary_sensor", "lid_open", payload);
+
+  _mqttClient.loop();
+
+  // Reignite Attempts
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"Reignite Attempts\","
+      "\"stat_t\":\"%s/sensor/reignite_attempts\","
+      "\"stat_cla\":\"measurement\","
+      "\"uniq_id\":\"gundergrill_reignite_attempts\","
+      "\"ic\":\"mdi:fire-alert\","
+      "\"ent_cat\":\"diagnostic\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("sensor", "reignite_attempts", payload);
 
   _mqttClient.loop();
 

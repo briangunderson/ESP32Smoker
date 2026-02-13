@@ -13,7 +13,10 @@ TemperatureController::TemperatureController(MAX31865* tempSensor,
       _lastPidUpdate(0), _augerCycleStart(0), _augerCycleState(false),
       _lastIntegralSave(0),
       _historyHead(0), _historyCount(0), _lastHistorySample(0),
-      _eventHead(0), _eventCount(0) {
+      _eventHead(0), _eventCount(0),
+      _reigniteAttempts(0), _reignitePhase(0), _reignitePhaseStart(0),
+      _pidMaxedSince(0),
+      _lidOpen(false), _lidOpenTime(0), _lidStableTime(0) {
 
   // Calculate PID gains from Proportional Band parameters (PiSmoker method)
   _Kp = -1.0 / PID_PROPORTIONAL_BAND;              // = -0.0167
@@ -62,7 +65,7 @@ void TemperatureController::update() {
 
   // Check for temperature faults
   // High temp: check in all active states (runaway fire is always dangerous)
-  // Low temp: only check during RUNNING/COOLDOWN (smoker is cold during STARTUP)
+  // Low temp: only check during RUNNING/COOLDOWN (smoker is cold during STARTUP/REIGNITE)
   if (_state != STATE_IDLE && _state != STATE_ERROR) {
     if (_currentTemp >= TEMP_MAX_SAFE) {
       handleTemperatureError();
@@ -72,10 +75,17 @@ void TemperatureController::update() {
     }
   }
 
+  // Lid-open detection (only during RUNNING state)
+  if (_state == STATE_RUNNING && ENABLE_LID_DETECTION) {
+    detectLidOpen();
+  } else {
+    _lidOpen = false;
+  }
+
   // Detect and log state transitions
   if (_state != _previousState) {
-    // Save integral when leaving RUNNING state (any exit path)
-    if (_previousState == STATE_RUNNING) {
+    // Save integral when leaving RUNNING or REIGNITE state (any exit path)
+    if (_previousState == STATE_RUNNING || _previousState == STATE_REIGNITE) {
       saveIntegralToNVS();
     }
 
@@ -112,6 +122,9 @@ void TemperatureController::update() {
   case STATE_ERROR:
     handleErrorState();
     break;
+  case STATE_REIGNITE:
+    handleReigniteState();
+    break;
   }
 }
 
@@ -137,6 +150,11 @@ void TemperatureController::startSmoking(float targetTemp) {
   _lastPidUpdate = millis();
   _augerCycleStart = millis();
   _augerCycleState = false;
+
+  // Reset reignite counter for new cook session
+  _reigniteAttempts = 0;
+  _pidMaxedSince = 0;
+  _lidOpen = false;
 
   if (ENABLE_SERIAL_DEBUG) {
     Serial.printf("[TEMP] Starting up - target: %.1f°F\n", _setpoint);
@@ -195,6 +213,8 @@ const char* TemperatureController::getStateName(void) {
     return "Shutdown";
   case STATE_ERROR:
     return "Error";
+  case STATE_REIGNITE:
+    return "Reignite";
   default:
     return "Unknown";
   }
@@ -293,6 +313,44 @@ void TemperatureController::handleRunningState() {
   manageFan();
   manageAuger();
   updatePID();
+
+  // Reignite detection: fire may be dead if temp is low and PID is maxed out
+  if (ENABLE_REIGNITE && !_lidOpen) {
+    unsigned long now = millis();
+
+    // Track how long PID has been at max output
+    if (_pidOutput >= PID_OUTPUT_MAX - 0.01) {
+      if (_pidMaxedSince == 0) _pidMaxedSince = now;
+    } else {
+      _pidMaxedSince = 0;  // Reset if PID drops below max
+    }
+
+    // Trigger reignite if temp is low AND PID has been maxed for trigger time
+    if (_currentTemp < REIGNITE_TEMP_THRESHOLD &&
+        _pidMaxedSince > 0 &&
+        (now - _pidMaxedSince) >= REIGNITE_TRIGGER_TIME) {
+
+      if (_reigniteAttempts < REIGNITE_MAX_ATTEMPTS) {
+        DUAL_LOGF(LOG_WARNING,
+          "[REIGNITE] Fire may be out! Temp=%.1f°F < %.0f°F, PID maxed for %lus. Attempt %d/%d\n",
+          _currentTemp, REIGNITE_TEMP_THRESHOLD,
+          (now - _pidMaxedSince) / 1000,
+          _reigniteAttempts + 1, REIGNITE_MAX_ATTEMPTS);
+
+        _state = STATE_REIGNITE;
+        _stateStartTime = now;
+        _reignitePhase = 0;
+        _reignitePhaseStart = now;
+        _pidMaxedSince = 0;
+      } else {
+        DUAL_LOGF(LOG_CRIT,
+          "[REIGNITE] Max attempts (%d) exhausted. Entering ERROR state.\n",
+          REIGNITE_MAX_ATTEMPTS);
+        _state = STATE_ERROR;
+        _relayControl->emergencyStop();
+      }
+    }
+  }
 }
 
 void TemperatureController::handleCooldownState() {
@@ -373,7 +431,10 @@ void TemperatureController::updatePID() {
   float P = _Kp * error + 0.5;
 
   // Integral term (with anti-windup limiting to 50% of output range)
-  _integral += error * dt;
+  // Freeze integral accumulation during lid-open to prevent overshoot
+  if (!_lidOpen) {
+    _integral += error * dt;
+  }
 
   // Limit integral contribution to 50% of output range
   float integralContribution = 0.5;
@@ -584,9 +645,162 @@ const char* TemperatureController::stateToString(ControllerState state) {
     return "SHUTDOWN";
   case STATE_ERROR:
     return "ERROR";
+  case STATE_REIGNITE:
+    return "REIGNITE";
   default:
     return "UNKNOWN";
   }
+}
+
+// ============================================================================
+// REIGNITE LOGIC
+// ============================================================================
+
+void TemperatureController::handleReigniteState() {
+  unsigned long now = millis();
+  unsigned long phaseElapsed = now - _reignitePhaseStart;
+
+  switch (_reignitePhase) {
+    case 0: // Fan Clear — blow out ash
+      _relayControl->setFan(RELAY_ON);
+      _relayControl->setAuger(RELAY_OFF);
+      _relayControl->setIgniter(RELAY_OFF);
+      if (phaseElapsed >= REIGNITE_FAN_CLEAR_TIME) {
+        _reignitePhase = 1;
+        _reignitePhaseStart = now;
+        DUAL_LOGF(LOG_INFO, "[REIGNITE] Phase 1: Igniter preheat\n");
+      }
+      break;
+
+    case 1: // Igniter Preheat
+      _relayControl->setFan(RELAY_ON);
+      _relayControl->setAuger(RELAY_OFF);
+      _relayControl->setIgniter(RELAY_ON);
+      if (phaseElapsed >= REIGNITE_PREHEAT_TIME) {
+        _reignitePhase = 2;
+        _reignitePhaseStart = now;
+        DUAL_LOGF(LOG_INFO, "[REIGNITE] Phase 2: Feeding pellets\n");
+      }
+      break;
+
+    case 2: // Feeding — auger + igniter + fan
+      _relayControl->setFan(RELAY_ON);
+      _relayControl->setSafeAuger(RELAY_ON);
+      _relayControl->setIgniter(RELAY_ON);
+      if (phaseElapsed >= REIGNITE_FEED_TIME) {
+        _reignitePhase = 3;
+        _reignitePhaseStart = now;
+        _relayControl->setIgniter(RELAY_OFF);
+        DUAL_LOGF(LOG_INFO, "[REIGNITE] Phase 3: Recovery (waiting for temp rise)\n");
+      }
+      break;
+
+    case 3: // Recovery — fan + 50% auger, wait for temp to rise
+      _relayControl->setFan(RELAY_ON);
+      _relayControl->setIgniter(RELAY_OFF);
+      // 50% duty cycle: auger on for half the cycle
+      {
+        unsigned long cyclePos = phaseElapsed % AUGER_CYCLE_TIME;
+        bool augerOn = (cyclePos < AUGER_CYCLE_TIME / 2);
+        if (augerOn) {
+          _relayControl->setSafeAuger(RELAY_ON);
+        } else {
+          _relayControl->setAuger(RELAY_OFF);
+        }
+      }
+
+      // Success: temp rose above threshold
+      if (_currentTemp >= REIGNITE_TEMP_THRESHOLD) {
+        _reigniteAttempts++;
+        DUAL_LOGF(LOG_INFO,
+          "[REIGNITE] Success! Temp=%.1f°F. Returning to RUNNING. (Attempt %d)\n",
+          _currentTemp, _reigniteAttempts);
+        _state = STATE_RUNNING;
+        _stateStartTime = millis();
+        _pidMaxedSince = 0;
+        // Reset PID to avoid integral windup from reignite period
+        _integral = 0.0;
+        _previousError = 0.0;
+        _lastPidUpdate = millis();
+        _augerCycleStart = millis();
+        return;
+      }
+
+      // Failure: recovery time exceeded
+      if (phaseElapsed >= REIGNITE_RECOVERY_TIME) {
+        _reigniteAttempts++;
+        if (_reigniteAttempts >= REIGNITE_MAX_ATTEMPTS) {
+          DUAL_LOGF(LOG_CRIT,
+            "[REIGNITE] Recovery failed after %d attempts. Entering ERROR state.\n",
+            _reigniteAttempts);
+          _state = STATE_ERROR;
+          _relayControl->emergencyStop();
+        } else {
+          DUAL_LOGF(LOG_WARNING,
+            "[REIGNITE] Recovery failed (attempt %d/%d). Retrying...\n",
+            _reigniteAttempts, REIGNITE_MAX_ATTEMPTS);
+          _reignitePhase = 0;
+          _reignitePhaseStart = millis();
+        }
+      }
+      break;
+  }
+}
+
+// ============================================================================
+// LID-OPEN DETECTION
+// ============================================================================
+
+void TemperatureController::detectLidOpen() {
+  unsigned long now = millis();
+
+  // Calculate temperature rate of change (°F/s)
+  // Use _previousTemp which is updated each PID cycle
+  float dt = TEMP_CONTROL_INTERVAL / 1000.0;  // seconds between updates
+  if (dt < 0.001) return;
+  float dTdt = (_currentTemp - _previousTemp) / dt;
+
+  if (!_lidOpen) {
+    // Detect lid opening: rapid temperature drop
+    if (dTdt < LID_OPEN_DERIVATIVE_THRESHOLD) {
+      _lidOpen = true;
+      _lidOpenTime = now;
+      _lidStableTime = 0;
+      DUAL_LOGF(LOG_INFO,
+        "[LID] Lid opened detected! dT/dt=%.2f°F/s (threshold=%.1f)\n",
+        dTdt, LID_OPEN_DERIVATIVE_THRESHOLD);
+    }
+  } else {
+    // Detect lid closing: temperature stabilizing
+    if (dTdt > -0.5) {
+      // Temperature is stabilizing
+      if (_lidStableTime == 0) {
+        _lidStableTime = now;
+      } else if ((now - _lidStableTime) >= (uint32_t)LID_CLOSE_RECOVERY_TIME) {
+        // Stable for long enough — declare lid closed
+        uint32_t openDuration = (now - _lidOpenTime) / 1000;
+        DUAL_LOGF(LOG_INFO,
+          "[LID] Lid closed. Open for %lus. Integral preserved at %.2f\n",
+          openDuration, _integral);
+        _lidOpen = false;
+        _lidOpenTime = 0;
+        _lidStableTime = 0;
+      }
+    } else {
+      // Still dropping — reset stable timer
+      _lidStableTime = 0;
+    }
+
+    // Minimum lid-open duration to avoid false triggers
+    if (_lidOpen && (now - _lidOpenTime) < LID_OPEN_MIN_DURATION) {
+      // Too soon to be sure — but keep the flag for integral freeze
+    }
+  }
+}
+
+uint32_t TemperatureController::getLidOpenDuration(void) {
+  if (!_lidOpen) return 0;
+  return (millis() - _lidOpenTime) / 1000;
 }
 
 // Debug/Testing Methods
