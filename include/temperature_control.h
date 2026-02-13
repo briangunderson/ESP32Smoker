@@ -133,6 +133,9 @@ private:
   float _integral;
   float _previousError;
   float _previousTemp;        // For derivative-on-measurement
+  float _lastP;               // Last proportional term (for getPIDStatus)
+  float _lastI;               // Last integral term (for getPIDStatus)
+  float _lastD;               // Last derivative term (for getPIDStatus)
   unsigned long _lastPidUpdate;
   unsigned long _augerCycleStart;
   bool _augerCycleState;

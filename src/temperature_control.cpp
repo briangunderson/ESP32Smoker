@@ -9,6 +9,7 @@ TemperatureController::TemperatureController(MAX31865* tempSensor,
       _stateStartTime(0), _lastUpdate(0), _consecutiveErrors(0),
       _debugMode(false), _tempOverrideEnabled(false), _tempOverrideValue(70.0),
       _pidOutput(0.0), _integral(0.0), _previousError(0.0), _previousTemp(70.0),
+      _lastP(0.0), _lastI(0.0), _lastD(0.0),
       _lastPidUpdate(0), _augerCycleStart(0), _augerCycleState(false),
       _lastIntegralSave(0),
       _historyHead(0), _historyCount(0), _lastHistorySample(0),
@@ -208,20 +209,25 @@ TemperatureController::Status TemperatureController::getStatus(void) {
 }
 
 TemperatureController::PIDStatus TemperatureController::getPIDStatus(void) {
-  // Stub implementation - returns zeros for now
+  unsigned long cyclePos = (millis() - _augerCycleStart) % AUGER_CYCLE_TIME;
+  unsigned long onTime = (unsigned long)(AUGER_CYCLE_TIME * _pidOutput);
+  uint32_t remaining = (_state == STATE_RUNNING)
+    ? (uint32_t)((AUGER_CYCLE_TIME - cyclePos) / 1000)
+    : 0;
+
   return {
-    0.0f,  // proportionalTerm
-    0.0f,  // integralTerm
-    0.0f,  // derivativeTerm
-    0.0f,  // output
-    0.0f,  // error
+    _lastP,                    // proportionalTerm
+    _lastI,                    // integralTerm
+    _lastD,                    // derivativeTerm
+    _pidOutput,                // output (0.0 to 1.0)
+    _currentTemp - _setpoint,  // error
     _setpoint,
     _currentTemp,
     _Kp,
     _Ki,
     _Kd,
-    0,     // cycleTimeRemaining
-    false  // augerCycleState
+    remaining,                 // cycleTimeRemaining (seconds)
+    _augerCycleState           // augerCycleState
   };
 }
 
@@ -390,6 +396,11 @@ void TemperatureController::updatePID() {
   // Clamp output to valid range (0.0 - 1.0)
   if (_pidOutput > PID_OUTPUT_MAX) _pidOutput = PID_OUTPUT_MAX;
   if (_pidOutput < PID_OUTPUT_MIN) _pidOutput = PID_OUTPUT_MIN;
+
+  // Store PID terms for status reporting (getPIDStatus / MQTT)
+  _lastP = P;
+  _lastI = I;
+  _lastD = D;
 
   // Store for next iteration
   _previousError = error;
