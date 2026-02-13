@@ -55,7 +55,7 @@ void WebServer::setupRoutes() {
   _server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
     auto status = _controller->getStatus();
 
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<384> doc;
     doc["temp"] = status.currentTemp;
     doc["setpoint"] = status.setpoint;
     doc["state"] = _controller->getStateName();
@@ -65,6 +65,7 @@ void WebServer::setupRoutes() {
     doc["runtime"] = status.runtime;
     doc["errors"] = status.errorCount;
     doc["version"] = FIRMWARE_VERSION;
+    doc["heap"] = ESP.getFreeHeap();
 
     String response;
     serializeJson(doc, response);
