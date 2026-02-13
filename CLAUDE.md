@@ -491,32 +491,6 @@ The system automatically logs:
 - **State changes** - State machine transitions
 - **Errors** - Sensor errors, safety shutdowns
 
-### Setting Up a Syslog Server
-
-**On Linux (rsyslog)**:
-```bash
-# Edit /etc/rsyslog.conf and uncomment:
-module(load="imudp")
-input(type="imudp" port="514")
-
-# Restart rsyslog
-sudo systemctl restart rsyslog
-
-# View logs
-tail -f /var/log/syslog | grep ESP32Smoker
-```
-
-**On macOS (syslog)**:
-```bash
-# macOS includes syslog by default, just tail the system log
-log stream --predicate 'processImagePath contains "syslog"' | grep ESP32Smoker
-```
-
-**On Windows (Kiwi Syslog Server, Papertrail, etc.)**:
-- Install a syslog server like Kiwi Syslog Server (free version available)
-- Configure to listen on UDP port 514
-- Point ESP32 to the server's IP address
-
 ### Viewing Logs
 
 Logs appear with the format:
@@ -635,20 +609,6 @@ curl -X POST -F "enabled=false" http://device_ip/api/debug/mode
 ```
 
 ## Important Notes
-
-### Control Algorithm
-The PID control in `temperature_control.cpp` is the heart of the system:
-- **Proportional Band Method**: Uses negative gains with 0.5 centering (from PiSmoker)
-  - P = Kp × (currentTemp - setpoint) + 0.5
-  - Output naturally balanced around 50% at setpoint
-- **Derivative on Measurement**: Calculates derivative from temperature changes, not error changes
-  - Prevents "derivative kick" when setpoint changes during cooking
-- **Conservative Anti-Windup**: Limits integral contribution to 50% of output range
-  - Prevents windup during saturation (lid open, startup, etc.)
-- **Time-Proportioning**: PID output (0.15 to 1.0) controls auger duty cycle within 20-second windows
-  - Minimum 15% duty cycle keeps fire alive during low-demand periods
-- **Smooth Control**: Auger cycles on/off smoothly based on PID output, not bang-bang
-- Based on proven PiSmoker implementation (battle-tested, minimal oscillation)
 
 ### Safety Interlocks
 In `relay_control.cpp`:
@@ -771,129 +731,12 @@ The project uses the following libraries (managed via PlatformIO):
 
 All dependencies are automatically installed by PlatformIO on first build.
 
-## Recent Changes & Fixes
-
-### February 8, 2026 - Web Interface Redesign & PROGMEM Serving
-**Issue**: Web interface returned `{"error":"Not found"}` - LittleFS filesystem never uploaded
-
-**Root Cause**: The board's partition table (`partitions-8MB-tinyuf2.csv`) has an `ffat` (FAT) data partition, not a `spiffs` partition. LittleFS requires `spiffs` partition type. OTA filesystem uploads silently fail because the ESP32's `Update` library can't find a matching partition.
-
-**Solution**: Embedded web files directly in firmware using PROGMEM (`include/web_content.h`). This eliminates the filesystem dependency entirely.
-
-**Changes**:
-1. Redesigned web interface with modern dark UI, SVG temperature rings, toast notifications
-2. Fixed JS API calls to use FormData instead of JSON (matches ESPAsyncWebServer's body param parsing)
-3. Created `include/web_content.h` with PROGMEM raw string literals for HTML/CSS/JS
-4. Changed `web_server.cpp` to serve from PROGMEM via `request->send_P()` instead of filesystem
-5. Switched `main.cpp` from LittleFS to FFat (matches partition table) for any future file storage
-6. Added `runHardwareDiagnostic()` to MAX31865 driver for fault detection cycle testing
-7. Added deferred diagnostic in main loop (10s after boot) to capture output on ESP32-S3 USB CDC
-
-### February 8, 2026 - MAX31865 Hardware Diagnostic
-**Issue**: RTD ADC reads 0 across multiple MAX31865 boards and probes
-
-**Root Cause**: 3-wire RTD wiring had Force+ disconnected. Without Force+, no excitation current flows through the reference resistor or RTD.
-
-**Diagnostic Added**: `runHardwareDiagnostic()` in `max31865.cpp` runs a 7-step diagnostic:
-- SPI write/read verification (0xAA/0x55 pattern test)
-- Fault detection cycle in 3-wire and 2/4-wire modes
-- One-shot conversions in both modes
-- Wiring guide output
-
-**Key Learning**: Auto-conversion mode only checks threshold faults (D7/D6). Hardware faults (D5-D2: REFIN/RTDIN/overvoltage) require explicit fault detection cycle (D3:D2=01 in config register).
-
-### January 29, 2026 - TM1638 Display Troubleshooting
-**Issue**: TM1638 display showing only power LED, no segments or status LEDs
-
-**Root Cause**: Library compilation issue and missing diagnostics
-
-**Fixes Applied**:
-1. **TM16XX Library Patch** - Fixed `min()` function type mismatch in [.pio/libdeps/esp32dev/tm1638-library/TM16XX.cpp](src/tm1638_display.cpp)
-   - Changed `min(7, intensity)` to `min((byte)7, intensity)` to resolve C++ template deduction error
-
-2. **Enhanced TM1638 Initialization** ([tm1638_display.cpp](src/tm1638_display.cpp))
-   - Added diagnostic serial output showing pin assignments
-   - Added 500ms startup test pattern ("88888888" + all LEDs)
-   - Added explicit intensity parameter (7 = maximum brightness)
-
-3. **Invalid Temperature Handling** ([tm1638_display.cpp:58-62](src/tm1638_display.cpp#L58-L62))
-   - Added NaN/infinity checks in `formatTemperature()`
-   - Invalid temps now display as "----" instead of garbage
-
-4. **Display Update Logging** ([tm1638_display.cpp:38-43](src/tm1638_display.cpp#L38-L43))
-   - Added periodic debug output showing what's being displayed
-   - Helps verify data is being sent to display
-
-5. **Button Handler Fix** ([main.cpp:121](src/main.cpp#L121))
-   - Changed `controller->start()` to `controller->startSmoking(controller->getSetpoint())`
-   - Fixed compilation error due to method name mismatch
-
-**Verification**: Display now shows current temp (left) and setpoint (right), status LEDs work, buttons functional
-
-### January 29, 2026 - PID Algorithm Implementation (Proportional Band Method)
-**Context**: User revealed that PID control was "the whole point" of replacing the stock controller. Previous hysteresis control was just a placeholder.
-
-**Changes Applied**:
-
-1. **Proportional Band PID Parameters** ([config.h:52-63](include/config.h#L52-L63))
-   - Replaced standard PID gains (Kp=4.0, Ki=0.01, Kd=100.0) with Proportional Band parameters
-   - `PID_PROPORTIONAL_BAND`: 60.0°F (from PiSmoker defaults)
-   - `PID_INTEGRAL_TIME`: 180.0s (slow, stable integration)
-   - `PID_DERIVATIVE_TIME`: 45.0s (good damping)
-   - Auto-calculated gains: Kp=-0.0167, Ki=-0.0000926, Kd=-0.75
-
-2. **Auger Control Improvements** ([config.h:65-67](include/config.h#L65-L67))
-   - Increased `AUGER_CYCLE_TIME` from 15s to 20s (matches PiSmoker)
-   - Added `PID_OUTPUT_MIN`: 0.15 (15% minimum duty cycle keeps fire alive)
-   - Changed output range from 0-100% to 0.0-1.0 (standard unit interval)
-
-3. **Startup Threshold Changes** ([config.h:70-71](include/config.h#L70-L71))
-   - Changed `STARTUP_TEMP_THRESHOLD` to 115°F absolute (not relative to setpoint)
-   - Added `IGNITER_CUTOFF_TEMP`: 100°F (turns off igniter once lit)
-
-4. **PID Algorithm Implementation** ([temperature_control.cpp:256-305](src/temperature_control.cpp#L256-L305))
-   - **Proportional with 0.5 centering**: P = Kp × error + 0.5 (error = currentTemp - setpoint, reversed)
-   - **Derivative on measurement**: Prevents derivative kick when setpoint changes
-   - **Better anti-windup**: Limits integral to 50% of output range (not 10,000%)
-   - Enhanced debug output showing all PID terms
-
-5. **Startup State Improvements** ([temperature_control.cpp:174-212](src/temperature_control.cpp#L174-L212))
-   - Transitions to RUNNING at 115°F absolute (not relative to setpoint)
-   - Automatically turns off igniter when temp exceeds 100°F
-   - More efficient startup with less pellet waste
-
-6. **MAX31865 Robust Initialization** ([max31865.cpp:8-74](src/max31865.cpp#L8-L74))
-   - Added 250ms power-on delay before initialization
-   - Retry logic with up to 3 attempts
-   - Configuration verification (write then read back)
-   - Diagnostic output showing fault status on failures
-   - Addresses potential race condition between ESP32 and MAX31865 power-up
-
-**Based On**: Comprehensive analysis of PiSmoker/PiFire codebase showing battle-tested PID implementation with ±3-7°F accuracy
-
-**Expected Results**:
-- Minimal temperature oscillation (should hold within ±5°F)
-- Fire stays lit during low-demand periods (15% minimum duty cycle)
-- No derivative kick when adjusting setpoint during cooking
-- More efficient startup (transitions at 115°F, igniter off at 100°F)
-
-## Project Context for AI Assistants
-
-This project was initially built on January 28, 2026, with hardware enhancements added on January 29, 2026. The codebase is well-structured with:
-- Clear separation of concerns (each module in its own file)
-- Comprehensive documentation at multiple levels
-- Safety-first design with interlocks and fault handling
-- Production-ready code (not a prototype)
+## Safety Reminders for AI Assistants
 
 When making changes:
 - **Always** check safety implications (especially relay control)
 - Maintain the interlock: auger requires fan
 - Test temperature limits after any control changes
-- Update relevant documentation when changing behavior
 - Consider logging/debugging when modifying core control logic
 
-The code prioritizes safety and reliability over advanced features. Keep this philosophy when extending functionality.
-
----
-
-**For quick orientation**: Start with README.md, then review include/config.h, then read src/temperature_control.cpp to understand the control logic.
+Historical bug fixes and hardware lessons are captured in the project's auto-memory (MEMORY.md).
