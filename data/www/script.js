@@ -113,6 +113,10 @@ function updateUI(s) {
     document.getElementById('runtime').textContent = m + ':' + String(sec).padStart(2, '0');
   }
   document.getElementById('error-count').textContent = s.errors || 0;
+  if (s.heap !== undefined) {
+    var kb = (s.heap / 1024).toFixed(0);
+    document.getElementById('heap-free').textContent = kb + ' KB';
+  }
 
   // Firmware version
   if (s.version) {
@@ -238,7 +242,7 @@ function drawGraph() {
   }
 
   // Layout: padding for axis labels
-  var padL = 42, padR = 12, padT = 14, padB = 24;
+  var padL = 42, padR = 40, padT = 14, padB = 24;
   var gW = W - padL - padR;
   var gH = H - padT - padB;
 

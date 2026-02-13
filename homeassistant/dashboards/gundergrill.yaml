@@ -127,7 +127,7 @@ views:
                       fontSize: "32px"
                       formatter: |
                         EVAL:function(val) {
-                          return val.toFixed(0) + "°F";
+                          return (val * 500 / 100).toFixed(0) + "°F";
                         }
               fill:
                 type: gradient
@@ -200,8 +200,6 @@ views:
               show_states: true
               colorize_states: true
             graph_span: 4h
-            span:
-              end: now
             apex_config:
               chart:
                 height: 300
@@ -504,8 +502,6 @@ views:
               show_states: true
               colorize_states: true
             graph_span: 30min
-            span:
-              end: now
             apex_config:
               chart:
                 height: 200
@@ -660,8 +656,6 @@ views:
               show_states: true
               colorize_states: true
             graph_span: 24h
-            span:
-              end: now
             apex_config:
               chart:
                 height: 400
@@ -769,7 +763,7 @@ views:
             secondary_info: name
 
           - type: custom:mushroom-entity-card
-            entity: sensor.gundergrill_pid_output_percent
+            entity: sensor.gundergrill_pid_output
             name: "PID Output"
             layout: vertical
             primary_info: state
@@ -836,8 +830,6 @@ views:
               show_states: true
               colorize_states: true
             graph_span: 2h
-            span:
-              end: now
             apex_config:
               chart:
                 height: 350
@@ -884,8 +876,6 @@ views:
               title: "Temperature Error"
               show_states: false
             graph_span: 2h
-            span:
-              end: now
             apex_config:
               chart:
                 height: 200
