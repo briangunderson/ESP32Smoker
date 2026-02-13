@@ -21,7 +21,12 @@
             <div class="state-badge" id="state-badge">Idle</div>
         </header>
 
-        <main>
+        <nav class="tab-bar">
+            <button class="tab-btn active" onclick="switchTab('dashboard')">Dashboard</button>
+            <button class="tab-btn" onclick="switchTab('pid')">PID Visualizer</button>
+        </nav>
+
+        <main id="tab-dashboard" class="tab-panel active">
             <!-- Temperature Hero -->
             <section class="temp-hero">
                 <div class="temp-block temp-current">
@@ -171,6 +176,75 @@
                 </div>
             </section>
         </main>
+
+        <div id="tab-pid" class="tab-panel" style="display:none;">
+            <!-- PID Block Diagram -->
+            <section class="card pid-diagram-card">
+                <h3>PID Control Flow</h3>
+                <canvas id="pid-block-diagram"></canvas>
+            </section>
+
+            <!-- PID Terms Breakdown + Auger Duty Cycle -->
+            <div class="pid-mid-row">
+                <section class="card pid-terms-card">
+                    <h3>PID Terms</h3>
+                    <canvas id="pid-terms-bar"></canvas>
+                    <div class="pid-values-grid">
+                        <div class="pid-val"><span class="pid-label">P</span><span id="pv-p" class="pid-num">--</span></div>
+                        <div class="pid-val"><span class="pid-label">I</span><span id="pv-i" class="pid-num">--</span></div>
+                        <div class="pid-val"><span class="pid-label">D</span><span id="pv-d" class="pid-num">--</span></div>
+                        <div class="pid-val"><span class="pid-label">Out</span><span id="pv-out" class="pid-num">--</span></div>
+                    </div>
+                </section>
+                <section class="card pid-auger-card">
+                    <h3>Auger Cycle</h3>
+                    <canvas id="pid-auger-gauge"></canvas>
+                    <div class="auger-stats">
+                        <div><span class="pid-label">Duty</span><span id="pv-duty">--%</span></div>
+                        <div><span class="pid-label">Cycle</span><span id="pv-cycle">--s</span></div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Status Indicators -->
+            <section class="card pid-status-card">
+                <div class="pid-status-row">
+                    <div class="pid-indicator" id="pid-ind-lid">
+                        <span class="ind-dot"></span>
+                        <span>Lid</span>
+                    </div>
+                    <div class="pid-indicator" id="pid-ind-reignite">
+                        <span class="ind-dot"></span>
+                        <span>Reignite</span>
+                        <span id="pv-reignite" class="ind-count">0</span>
+                    </div>
+                    <div class="pid-indicator" id="pid-ind-saturated">
+                        <span class="ind-dot"></span>
+                        <span>Saturated</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PID Time Series Chart -->
+            <section class="card pid-chart-card">
+                <div class="graph-header">
+                    <h3>PID History</h3>
+                    <div class="graph-range-btns" id="pid-range-btns">
+                        <button class="active" onclick="setPidRange(120)">2m</button>
+                        <button onclick="setPidRange(300)">5m</button>
+                        <button onclick="setPidRange(600)">10m</button>
+                    </div>
+                </div>
+                <canvas id="pid-history-chart"></canvas>
+                <div class="graph-legend">
+                    <span class="legend-item"><span class="legend-swatch" style="background:#3498db"></span>P</span>
+                    <span class="legend-item"><span class="legend-swatch" style="background:#2ecc71"></span>I</span>
+                    <span class="legend-item"><span class="legend-swatch" style="background:#ff6b35"></span>D</span>
+                    <span class="legend-item"><span class="legend-swatch" style="background:#fff"></span>Output</span>
+                    <span class="legend-item"><span class="legend-swatch" style="background:#e74c3c;opacity:.6"></span>Temp</span>
+                </div>
+            </section>
+        </div>
 
         <footer>GunderGrill <span id="fw-footer-version">v1.2.0</span></footer>
     </div>

@@ -54,8 +54,9 @@ void WebServer::setupRoutes() {
   // API: Get current status
   _server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
     auto status = _controller->getStatus();
+    auto pid = _controller->getPIDStatus();
 
-    StaticJsonDocument<384> doc;
+    StaticJsonDocument<512> doc;
     doc["temp"] = status.currentTemp;
     doc["setpoint"] = status.setpoint;
     doc["state"] = _controller->getStateName();
@@ -66,6 +67,18 @@ void WebServer::setupRoutes() {
     doc["errors"] = status.errorCount;
     doc["version"] = FIRMWARE_VERSION;
     doc["heap"] = ESP.getFreeHeap();
+
+    // PID data for web UI visualization
+    JsonObject pidObj = doc.createNestedObject("pid");
+    pidObj["p"] = serialized(String(pid.proportionalTerm, 4));
+    pidObj["i"] = serialized(String(pid.integralTerm, 4));
+    pidObj["d"] = serialized(String(pid.derivativeTerm, 4));
+    pidObj["output"] = serialized(String(pid.output * 100.0, 1));
+    pidObj["error"] = serialized(String(pid.error, 1));
+    pidObj["cycleRemaining"] = pid.cycleTimeRemaining;
+    pidObj["augerOn"] = pid.augerCycleState;
+    pidObj["lidOpen"] = _controller->isLidOpen();
+    pidObj["reigniteAttempts"] = _controller->getReigniteAttempts();
 
     String response;
     serializeJson(doc, response);
