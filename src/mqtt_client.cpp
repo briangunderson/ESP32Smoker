@@ -1,16 +1,37 @@
 #include "mqtt_client.h"
 #include "config.h"
+#include <ArduinoJson.h>
+
+// Static instance for PubSubClient callback routing
+MQTTClient* MQTTClient::_instance = nullptr;
+
+// ============================================================================
+// Device info shared across all discovery messages (JSON fragment)
+// ============================================================================
+static const char DEVICE_JSON_FMT[] PROGMEM =
+    "\"dev\":{\"ids\":[\"gundergrill\"],\"name\":\"GunderGrill\","
+    "\"mf\":\"GunderGrill\",\"mdl\":\"ESP32-S3 Pellet Smoker\","
+    "\"sw\":\"%s\",\"cu\":\"http://esp32-smoker.local\"}";
 
 MQTTClient::MQTTClient(TemperatureController* controller,
                        const char* brokerHost, uint16_t brokerPort)
     : _mqttClient(_wifiClient), _controller(controller),
       _brokerHost(brokerHost), _brokerPort(brokerPort),
       _clientId(MQTT_CLIENT_ID), _rootTopic(MQTT_ROOT_TOPIC),
-      _lastPublish(0), _subscribed(false) {}
+      _lastPublish(0), _lastTelemetry(0),
+      _subscribed(false), _discoveryPublished(false) {}
+
+// ============================================================================
+// LIFECYCLE
+// ============================================================================
 
 bool MQTTClient::begin(const char* clientId) {
   _clientId = clientId;
+  _instance = this;
+
   _mqttClient.setServer(_brokerHost, _brokerPort);
+  _mqttClient.setBufferSize(1024);  // Required for HA discovery payloads
+  _mqttClient.setCallback(staticCallback);
 
   if (ENABLE_SERIAL_DEBUG) {
     Serial.printf(
@@ -35,7 +56,6 @@ bool MQTTClient::isConnected(void) {
 }
 
 void MQTTClient::update() {
-  // Reconnect if necessary
   if (!_mqttClient.connected()) {
     unsigned long now = millis();
     static unsigned long lastReconnectAttempt = 0;
@@ -47,24 +67,44 @@ void MQTTClient::update() {
   } else {
     _mqttClient.loop();
 
-    // Publish status periodically
     unsigned long now = millis();
+
+    // Publish core status periodically
     if (now - _lastPublish > MQTT_STATUS_INTERVAL) {
       _lastPublish = now;
       publishStatus();
     }
+
+    // Publish extended telemetry less frequently
+    if (now - _lastTelemetry > MQTT_TELEMETRY_INTERVAL) {
+      _lastTelemetry = now;
+      publishTelemetry();
+    }
   }
 }
 
+// ============================================================================
+// CONNECTION
+// ============================================================================
+
 bool MQTTClient::reconnect() {
-  if (_mqttClient.connect(_clientId, MQTT_USERNAME, MQTT_PASSWORD)) {
+  // Configure LWT (Last Will & Testament) — broker publishes this if we disconnect
+  String availTopic = String(_rootTopic) + "/status/online";
+
+  if (_mqttClient.connect(_clientId, MQTT_USERNAME, MQTT_PASSWORD,
+                          availTopic.c_str(), 1, true, "false")) {
     if (ENABLE_SERIAL_DEBUG) {
       Serial.printf("[MQTT] Connected as %s (authenticated)\n", _clientId);
     }
 
-    // Publish birth message
-    String birthTopic = String(_rootTopic) + "/status/online";
-    _mqttClient.publish(birthTopic.c_str(), "true", true);
+    // Publish birth message (retained)
+    _mqttClient.publish(availTopic.c_str(), "true", true);
+
+    // Publish HA MQTT Discovery (retained, only needs to happen once per boot)
+    if (!_discoveryPublished) {
+      publishDiscovery();
+      _discoveryPublished = true;
+    }
 
     subscribe();
     return true;
@@ -77,52 +117,14 @@ bool MQTTClient::reconnect() {
   }
 }
 
-void MQTTClient::publishStatus(void) {
-  if (!_mqttClient.connected())
-    return;
-
-  auto status = _controller->getStatus();
-
-  // Publish temperature
-  String tempTopic = String(_rootTopic) + "/sensor/temperature";
-  char tempBuffer[10];
-  snprintf(tempBuffer, sizeof(tempBuffer), "%.1f", status.currentTemp);
-  _mqttClient.publish(tempTopic.c_str(), tempBuffer);
-
-  // Publish setpoint
-  String setpointTopic = String(_rootTopic) + "/sensor/setpoint";
-  char setpointBuffer[10];
-  snprintf(setpointBuffer, sizeof(setpointBuffer), "%.1f",
-           status.setpoint);
-  _mqttClient.publish(setpointTopic.c_str(), setpointBuffer);
-
-  // Publish state
-  String stateTopic = String(_rootTopic) + "/sensor/state";
-  _mqttClient.publish(stateTopic.c_str(),
-                      _controller->getStateName());
-
-  // Publish relay states
-  String atugerTopic = String(_rootTopic) + "/sensor/auger";
-  _mqttClient.publish(atugerTopic.c_str(), status.auger ? "on" : "off");
-
-  String fanTopic = String(_rootTopic) + "/sensor/fan";
-  _mqttClient.publish(fanTopic.c_str(), status.fan ? "on" : "off");
-
-  String igniterTopic = String(_rootTopic) + "/sensor/igniter";
-  _mqttClient.publish(igniterTopic.c_str(),
-                      status.igniter ? "on" : "off");
-
-  if (ENABLE_SERIAL_DEBUG) {
-    Serial.printf("[MQTT] Published status - Temp: %.1f°F, State: %s\n",
-                  status.currentTemp, _controller->getStateName());
-  }
-}
+// ============================================================================
+// SUBSCRIPTIONS & COMMAND HANDLING
+// ============================================================================
 
 void MQTTClient::subscribe() {
   if (_subscribed)
     return;
 
-  // Subscribe to control topics
   String startTopic = String(_rootTopic) + "/command/start";
   String stopTopic = String(_rootTopic) + "/command/stop";
   String setpointTopic = String(_rootTopic) + "/command/setpoint";
@@ -139,12 +141,348 @@ void MQTTClient::subscribe() {
 }
 
 void MQTTClient::setupTopics() {
-  // Topic structure already defined in config.h and subscribe()
+  // Topic structure defined in config.h and subscribe()
 }
 
-void MQTTClient::messageCallback(char* topic, byte* payload,
-                                 unsigned int length) {
-  // This would be implemented to handle incoming MQTT messages
-  // In a real implementation, this would be a non-static method or
-  // use a callback pattern
+void MQTTClient::staticCallback(char* topic, byte* payload,
+                                unsigned int length) {
+  if (_instance) {
+    _instance->handleMessage(topic, payload, length);
+  }
+}
+
+void MQTTClient::handleMessage(char* topic, byte* payload,
+                               unsigned int length) {
+  // Null-terminate the payload
+  char message[64];
+  unsigned int copyLen = (length < sizeof(message) - 1) ? length : sizeof(message) - 1;
+  memcpy(message, payload, copyLen);
+  message[copyLen] = '\0';
+
+  if (ENABLE_SERIAL_DEBUG) {
+    Serial.printf("[MQTT] Received: %s → %s\n", topic, message);
+  }
+
+  String topicStr(topic);
+  String prefix = String(_rootTopic) + "/command/";
+
+  if (!topicStr.startsWith(prefix)) return;
+
+  String command = topicStr.substring(prefix.length());
+
+  if (command == "start") {
+    float temp = 225.0;  // Default
+    if (copyLen > 0) {
+      float parsed = atof(message);
+      if (parsed >= TEMP_MIN_SETPOINT && parsed <= TEMP_MAX_SETPOINT) {
+        temp = parsed;
+      }
+    }
+    _controller->startSmoking(temp);
+    if (ENABLE_SERIAL_DEBUG) {
+      Serial.printf("[MQTT] Command: START at %.0f°F\n", temp);
+    }
+  } else if (command == "stop") {
+    _controller->stop();
+    if (ENABLE_SERIAL_DEBUG) {
+      Serial.println("[MQTT] Command: STOP");
+    }
+  } else if (command == "setpoint") {
+    if (copyLen > 0) {
+      float temp = atof(message);
+      if (temp >= TEMP_MIN_SETPOINT && temp <= TEMP_MAX_SETPOINT) {
+        _controller->setSetpoint(temp);
+        if (ENABLE_SERIAL_DEBUG) {
+          Serial.printf("[MQTT] Command: SETPOINT %.0f°F\n", temp);
+        }
+      }
+    }
+  }
+}
+
+// ============================================================================
+// STATUS PUBLISHING (every 5 seconds)
+// ============================================================================
+
+void MQTTClient::publishStatus(void) {
+  if (!_mqttClient.connected())
+    return;
+
+  auto status = _controller->getStatus();
+
+  // Temperature
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%.1f", status.currentTemp);
+  _mqttClient.publish((String(_rootTopic) + "/sensor/temperature").c_str(), buf);
+
+  // Setpoint
+  snprintf(buf, sizeof(buf), "%.1f", status.setpoint);
+  _mqttClient.publish((String(_rootTopic) + "/sensor/setpoint").c_str(), buf);
+
+  // State
+  _mqttClient.publish((String(_rootTopic) + "/sensor/state").c_str(),
+                      _controller->getStateName());
+
+  // Relay states
+  _mqttClient.publish((String(_rootTopic) + "/sensor/auger").c_str(),
+                      status.auger ? "ON" : "OFF");
+  _mqttClient.publish((String(_rootTopic) + "/sensor/fan").c_str(),
+                      status.fan ? "ON" : "OFF");
+  _mqttClient.publish((String(_rootTopic) + "/sensor/igniter").c_str(),
+                      status.igniter ? "ON" : "OFF");
+
+  // PID data (only meaningful in RUNNING state, but always publish for graphs)
+  auto pid = _controller->getPIDStatus();
+  snprintf(buf, sizeof(buf), "%.1f", pid.output * 100.0);
+  _mqttClient.publish((String(_rootTopic) + "/sensor/pid_output").c_str(), buf);
+  snprintf(buf, sizeof(buf), "%.4f", pid.proportionalTerm);
+  _mqttClient.publish((String(_rootTopic) + "/sensor/pid_p").c_str(), buf);
+  snprintf(buf, sizeof(buf), "%.4f", pid.integralTerm);
+  _mqttClient.publish((String(_rootTopic) + "/sensor/pid_i").c_str(), buf);
+  snprintf(buf, sizeof(buf), "%.4f", pid.derivativeTerm);
+  _mqttClient.publish((String(_rootTopic) + "/sensor/pid_d").c_str(), buf);
+
+  if (ENABLE_SERIAL_DEBUG) {
+    Serial.printf("[MQTT] Published status - Temp: %.1f°F, State: %s\n",
+                  status.currentTemp, _controller->getStateName());
+  }
+}
+
+// ============================================================================
+// EXTENDED TELEMETRY (every 60 seconds)
+// ============================================================================
+
+void MQTTClient::publishTelemetry() {
+  if (!_mqttClient.connected())
+    return;
+
+  char buf[16];
+
+  // WiFi RSSI
+  snprintf(buf, sizeof(buf), "%d", WiFi.RSSI());
+  _mqttClient.publish((String(_rootTopic) + "/sensor/wifi_rssi").c_str(), buf);
+
+  // Uptime in seconds
+  snprintf(buf, sizeof(buf), "%lu", millis() / 1000UL);
+  _mqttClient.publish((String(_rootTopic) + "/sensor/uptime").c_str(), buf);
+
+  // Free heap
+  snprintf(buf, sizeof(buf), "%u", ESP.getFreeHeap());
+  _mqttClient.publish((String(_rootTopic) + "/sensor/free_heap").c_str(), buf);
+}
+
+// ============================================================================
+// HOME ASSISTANT MQTT DISCOVERY
+// ============================================================================
+
+void MQTTClient::publishDiscoveryEntity(const char* component,
+                                        const char* objectId,
+                                        const char* payload) {
+  char topic[128];
+  snprintf(topic, sizeof(topic), "homeassistant/%s/gundergrill/%s/config",
+           component, objectId);
+  _mqttClient.publish(topic, payload, true);  // retained
+
+  if (ENABLE_SERIAL_DEBUG) {
+    Serial.printf("[MQTT] Discovery: %s/%s\n", component, objectId);
+  }
+}
+
+void MQTTClient::publishDiscovery() {
+  if (ENABLE_SERIAL_DEBUG) {
+    Serial.println("[MQTT] Publishing Home Assistant discovery...");
+  }
+
+  // Build the device JSON fragment once
+  char device[256];
+  snprintf(device, sizeof(device), DEVICE_JSON_FMT, FIRMWARE_VERSION);
+
+  // Availability config shared by all entities
+  const char* availFmt =
+      "\"avty_t\":\"%s/status/online\","
+      "\"pl_avail\":\"true\",\"pl_not_avail\":\"false\"";
+  char avail[128];
+  snprintf(avail, sizeof(avail), availFmt, _rootTopic);
+
+  char payload[768];
+
+  // --- SENSORS ---
+
+  // Temperature
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"Temperature\","
+      "\"stat_t\":\"%s/sensor/temperature\","
+      "\"unit_of_meas\":\"°F\",\"dev_cla\":\"temperature\","
+      "\"stat_cla\":\"measurement\","
+      "\"uniq_id\":\"gundergrill_temperature\","
+      "\"ic\":\"mdi:thermometer\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("sensor", "temperature", payload);
+
+  // Setpoint (read-only sensor)
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"Setpoint\","
+      "\"stat_t\":\"%s/sensor/setpoint\","
+      "\"unit_of_meas\":\"°F\",\"dev_cla\":\"temperature\","
+      "\"stat_cla\":\"measurement\","
+      "\"uniq_id\":\"gundergrill_setpoint\","
+      "\"ic\":\"mdi:thermometer-lines\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("sensor", "setpoint", payload);
+
+  // State
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"State\","
+      "\"stat_t\":\"%s/sensor/state\","
+      "\"uniq_id\":\"gundergrill_state\","
+      "\"ic\":\"mdi:state-machine\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("sensor", "state", payload);
+
+  // PID Output
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"PID Output\","
+      "\"stat_t\":\"%s/sensor/pid_output\","
+      "\"unit_of_meas\":\"%%\","
+      "\"stat_cla\":\"measurement\","
+      "\"uniq_id\":\"gundergrill_pid_output\","
+      "\"ic\":\"mdi:gauge\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("sensor", "pid_output", payload);
+
+  // PID Proportional
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"PID Proportional\","
+      "\"stat_t\":\"%s/sensor/pid_p\","
+      "\"stat_cla\":\"measurement\","
+      "\"uniq_id\":\"gundergrill_pid_p\","
+      "\"ic\":\"mdi:alpha-p-circle\","
+      "\"ent_cat\":\"diagnostic\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("sensor", "pid_p", payload);
+
+  // PID Integral
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"PID Integral\","
+      "\"stat_t\":\"%s/sensor/pid_i\","
+      "\"stat_cla\":\"measurement\","
+      "\"uniq_id\":\"gundergrill_pid_i\","
+      "\"ic\":\"mdi:alpha-i-circle\","
+      "\"ent_cat\":\"diagnostic\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("sensor", "pid_i", payload);
+
+  // PID Derivative
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"PID Derivative\","
+      "\"stat_t\":\"%s/sensor/pid_d\","
+      "\"stat_cla\":\"measurement\","
+      "\"uniq_id\":\"gundergrill_pid_d\","
+      "\"ic\":\"mdi:alpha-d-circle\","
+      "\"ent_cat\":\"diagnostic\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("sensor", "pid_d", payload);
+
+  // WiFi RSSI
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"WiFi Signal\","
+      "\"stat_t\":\"%s/sensor/wifi_rssi\","
+      "\"unit_of_meas\":\"dBm\","
+      "\"dev_cla\":\"signal_strength\","
+      "\"stat_cla\":\"measurement\","
+      "\"uniq_id\":\"gundergrill_wifi_rssi\","
+      "\"ent_cat\":\"diagnostic\","
+      "\"ic\":\"mdi:wifi\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("sensor", "wifi_rssi", payload);
+
+  // Uptime
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"Uptime\","
+      "\"stat_t\":\"%s/sensor/uptime\","
+      "\"unit_of_meas\":\"s\","
+      "\"dev_cla\":\"duration\","
+      "\"stat_cla\":\"total_increasing\","
+      "\"uniq_id\":\"gundergrill_uptime\","
+      "\"ent_cat\":\"diagnostic\","
+      "\"ic\":\"mdi:clock-outline\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("sensor", "uptime", payload);
+
+  // Free Heap
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"Free Memory\","
+      "\"stat_t\":\"%s/sensor/free_heap\","
+      "\"unit_of_meas\":\"B\","
+      "\"stat_cla\":\"measurement\","
+      "\"uniq_id\":\"gundergrill_free_heap\","
+      "\"ent_cat\":\"diagnostic\","
+      "\"ic\":\"mdi:memory\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("sensor", "free_heap", payload);
+
+  // --- BINARY SENSORS ---
+
+  // Auger
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"Auger\","
+      "\"stat_t\":\"%s/sensor/auger\","
+      "\"uniq_id\":\"gundergrill_auger\","
+      "\"ic\":\"mdi:screw-lag\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("binary_sensor", "auger", payload);
+
+  // Fan
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"Fan\","
+      "\"stat_t\":\"%s/sensor/fan\","
+      "\"uniq_id\":\"gundergrill_fan\","
+      "\"ic\":\"mdi:fan\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("binary_sensor", "fan", payload);
+
+  // Igniter
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"Igniter\","
+      "\"stat_t\":\"%s/sensor/igniter\","
+      "\"uniq_id\":\"gundergrill_igniter\","
+      "\"ic\":\"mdi:fire\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("binary_sensor", "igniter", payload);
+
+  // --- NUMBER (setpoint control) ---
+
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"Target Temperature\","
+      "\"stat_t\":\"%s/sensor/setpoint\","
+      "\"cmd_t\":\"%s/command/setpoint\","
+      "\"min\":%d,\"max\":%d,\"step\":5,"
+      "\"unit_of_meas\":\"°F\","
+      "\"uniq_id\":\"gundergrill_setpoint_control\","
+      "\"ic\":\"mdi:thermometer-lines\","
+      "%s,%s}", _rootTopic, _rootTopic,
+      TEMP_MIN_SETPOINT, TEMP_MAX_SETPOINT, device, avail);
+  publishDiscoveryEntity("number", "setpoint", payload);
+
+  // --- BUTTONS (stop / shutdown) ---
+
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"Stop\","
+      "\"cmd_t\":\"%s/command/stop\","
+      "\"uniq_id\":\"gundergrill_stop\","
+      "\"ic\":\"mdi:stop\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("button", "stop", payload);
+
+  snprintf(payload, sizeof(payload),
+      "{\"name\":\"Shutdown\","
+      "\"cmd_t\":\"%s/command/stop\","
+      "\"uniq_id\":\"gundergrill_shutdown\","
+      "\"ic\":\"mdi:power\","
+      "%s,%s}", _rootTopic, device, avail);
+  publishDiscoveryEntity("button", "shutdown", payload);
+
+  if (ENABLE_SERIAL_DEBUG) {
+    Serial.println("[MQTT] Home Assistant discovery published");
+  }
 }
