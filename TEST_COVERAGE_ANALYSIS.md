@@ -4,231 +4,431 @@
 
 **Automated test coverage: 0%**
 
-The project has no unit tests, no integration tests, no test framework configured, and no CI/CD pipeline. All validation is manual — either through the 16-item testing checklist in `CLAUDE.md`, the debug API endpoints, or the `runHardwareDiagnostic()` function in the MAX31865 driver.
+There are no unit tests, no integration tests, no test framework, and no `[env:native]` build environment configured. The CI/CD pipeline (`build.yml`) only verifies compilation — it runs no tests. All validation today is manual: the 24-item checklist in `CLAUDE.md`, the debug API endpoints, and the `runHardwareDiagnostic()` runtime check in the MAX31865 driver.
 
-This analysis identifies the highest-value areas for introducing automated tests, ordered by risk and complexity.
+This analysis identifies the highest-value areas for introducing automated tests, ordered by risk and testability.
 
 ---
 
-## 1. PID Controller Logic (Critical Priority)
+## 1. PID Controller Math (Critical)
 
-**File**: `src/temperature_control.cpp:336-398` (`updatePID()`)
+**File**: `src/temperature_control.cpp:415-486` (`updatePID()`)
 
-The PID algorithm is the core control loop — the reason this project exists. It is pure math with no hardware dependencies once you abstract away the sensor and relay objects, making it highly testable.
+The PID algorithm is the core control loop. A bug here causes either a fire hazard (auger runs at 100% indefinitely) or a dead fire (auger never runs). The math is pure arithmetic on class members with no hardware dependencies, making it the highest-ROI test target.
 
 ### What to test
 
-- **Gain calculation**: Verify `_Kp`, `_Ki`, `_Kd` are correctly derived from Proportional Band parameters
-  - `Kp = -1/PB = -1/60 = -0.01667`
-  - `Ki = Kp/Ti = -0.01667/180 = -0.00009259`
-  - `Kd = Kp*Td = -0.01667*45 = -0.75`
-- **Proportional term with 0.5 centering**: At setpoint, `P` should equal `0.5`; below setpoint `P > 0.5`; above setpoint `P < 0.5`
-- **Integral anti-windup**: `_integral` must be clamped to `±abs(0.5 / _Ki)` ≈ ±5398. Verify clamping works in both directions
-- **Derivative on measurement**: Verify derivative is computed from `(_currentTemp - _previousTemp) / dt`, not from error changes (prevents derivative kick on setpoint changes)
-- **Output clamping**: Output must stay within `[PID_OUTPUT_MIN (0.15), PID_OUTPUT_MAX (1.0)]`
-- **Edge cases**: `dt < 0.001` guard (avoids divide-by-zero), steady-state behavior, large step changes
-
-### Why this matters
-
-A bug in the PID output could cause the auger to run at 100% indefinitely (fire hazard) or never run (fire dies). The math is straightforward to validate in isolation.
+| Test case | Expected behavior |
+|---|---|
+| **Gain calculation** | `Kp = -1/60 = -0.01667`, `Ki = Kp/180 = -0.00009259`, `Kd = Kp*45 = -0.75` |
+| **P term at setpoint** | When `currentTemp == setpoint`, P = 0.5 (centering offset) |
+| **P term below setpoint** | When `currentTemp < setpoint`, P > 0.5 (more fuel) |
+| **P term above setpoint** | When `currentTemp > setpoint`, P < 0.5 (less fuel) |
+| **Integral anti-windup** | `_integral` clamped to `±abs(0.5 / Ki)` ≈ ±5398 |
+| **Integral freeze during lid-open** | When `_lidOpen == true`, `_integral` does not change |
+| **Derivative on measurement** | D = `Kd * (currentTemp - previousTemp) / dt` — not based on error |
+| **No derivative kick** | Changing setpoint does not cause a D-term spike |
+| **Output clamping** | Output stays within `[0.15, 1.0]` regardless of P+I+D sum |
+| **dt guard** | If dt < 0.001s, `updatePID()` returns early (no divide-by-zero) |
+| **Steady state convergence** | After N iterations at setpoint, output settles near 0.5 |
+| **Large step response** | Step from 150 to 350 — verify no output runaway, integral winds up then clamps |
 
 ### Suggested approach
 
-Extract PID computation into a testable function or test through the `TemperatureController` class with mocked sensor/relay objects. Use PlatformIO's `native` environment with a test framework (Unity or GoogleTest) so tests run on the host machine without ESP32 hardware.
+Test through the `TemperatureController` class with mock sensor/relay objects. Set `_currentTemp`, `_setpoint`, `_previousTemp`, and `_lastPidUpdate` directly, call `updatePID()`, and assert on `_pidOutput` and the individual terms. This requires making PID state accessible for testing (friend class, or test-only getters gated behind `#ifdef UNIT_TEST`).
 
 ---
 
-## 2. State Machine Transitions (Critical Priority)
+## 2. State Machine Transitions (Critical)
 
-**File**: `src/temperature_control.cpp:80-99` (state dispatch), lines 217-334 (state handlers)
+**File**: `src/temperature_control.cpp:46-128` (dispatch), lines 258-413 (handlers)
 
-The state machine governs all operating modes: `IDLE → STARTUP → RUNNING → COOLDOWN → SHUTDOWN → IDLE`, plus `ERROR` from any state.
+The state machine governs all 7 operating modes. Incorrect transitions can leave relays in unsafe combinations.
 
 ### What to test
 
-- **Valid transitions**: `startSmoking()` from IDLE → STARTUP, reaching threshold → RUNNING, `stop()` → COOLDOWN → SHUTDOWN → IDLE
-- **Startup phases**: Igniter-only for first 60s, fan starts at 60s, auger starts at 65s, transition to RUNNING at 115°F
-- **Startup timeout**: If temperature doesn't reach 115°F within 180s, state goes to ERROR and `emergencyStop()` is called
-- **Igniter cutoff**: Igniter turns off when temp exceeds 100°F during startup (regardless of phase)
-- **Cooldown behavior**: Auger off, igniter off, fan stays on until timeout or temp drops below `TEMP_MIN_SAFE + 20`
-- **Error entry from temperature fault**: Temp below 50°F or above 550°F → ERROR
-- **Error entry from sensor failure**: 5 consecutive read failures → ERROR + emergency stop
-- **Error recovery**: `resetError()` only works from ERROR state, returns to IDLE
-- **Integral persistence**: Integral is saved to NVS when leaving RUNNING, restored when re-entering RUNNING (if setpoint within ±20°F)
-- **Debug mode bypass**: `update()` skips state machine when `_debugMode == true`
+| Transition | Trigger | Verify |
+|---|---|---|
+| IDLE → STARTUP | `startSmoking(225)` | Relays all off initially, PID reset, reignite counter reset |
+| STARTUP phase 1 (0–60s) | Time < `IGNITER_PREHEAT_TIME` | Igniter ON (if temp < 100), fan OFF, auger OFF |
+| STARTUP phase 2 (60–65s) | Time in fan startup window | Igniter ON, fan ON, auger OFF |
+| STARTUP phase 3 (65–180s) | Time past fan delay | Igniter ON, fan ON, auger ON |
+| STARTUP → RUNNING | Temp reaches 115°F | State changes, NVS integral restored |
+| STARTUP → ERROR | 180s timeout without reaching 115°F | `emergencyStop()` called |
+| Igniter cutoff in STARTUP | Temp exceeds 100°F during any phase | Igniter turns OFF |
+| RUNNING → COOLDOWN | `stop()` called | Auger/igniter off, fan stays on |
+| RUNNING → REIGNITE | Temp < 140°F AND PID maxed for 120s AND not lid-open | Phase 0 starts |
+| RUNNING → ERROR | Reignite attempts exhausted (3) | `emergencyStop()` |
+| COOLDOWN → SHUTDOWN | Timeout or temp drops below 70°F | All relays off |
+| SHUTDOWN → IDLE | Immediate | All relays off |
+| Any active state → ERROR | Temp >= 550°F | `emergencyStop()` |
+| RUNNING/COOLDOWN → ERROR | Temp <= 50°F | `emergencyStop()` |
+| ERROR → IDLE | `resetError()` | Relays off, error count reset |
+| ERROR state no-op | `resetError()` from non-ERROR state | No state change |
 
-### Why this matters
+### Missing guard: `startSmoking()` from non-IDLE states
 
-Incorrect state transitions can leave relays in unsafe combinations (e.g., auger running without fan, igniter running indefinitely).
+`startSmoking()` sets `_state = STATE_STARTUP` unconditionally — there is no check that the current state is IDLE. This means calling `startSmoking()` during COOLDOWN or ERROR skips safety procedures. A test should verify this behavior (and potentially a code fix should guard against it).
+
+### Debug mode bypass
+
+When `_debugMode == true`, `update()` only reads temperature and returns. Verify that the state machine does not advance and no relay changes occur.
 
 ---
 
-## 3. Safety Interlocks (Critical Priority)
+## 3. Safety Interlocks (Critical)
 
 **File**: `src/relay_control.cpp:79-89` (`setSafeAuger()`)
 
-### What to test
-
-- **Auger interlock**: `setSafeAuger(RELAY_ON)` must be rejected when fan is OFF
-- **Auger interlock**: `setSafeAuger(RELAY_ON)` must succeed when fan is ON
-- **Emergency stop**: `emergencyStop()` turns all relays OFF
-- **allOff()**: All three relays (auger, fan, igniter) are set to OFF
-- **Relay state tracking**: `getStates()` returns correct booleans after set operations
-- **Out-of-range relay ID**: `setRelay()` with `relay >= RELAY_COUNT` is a no-op
-
-### Why this matters
-
-The auger interlock is the primary fire safety mechanism. If unburned pellets accumulate without airflow, reignition creates a dangerous flare-up.
-
----
-
-## 4. Temperature Reading & Conversion (High Priority)
-
-**Files**: `src/temperature_control.cpp:443-481` (`readTemperature()`), `src/max31865.cpp:272-290` (`rtdResistanceToTemperature()`)
+The auger interlock is the primary fire safety mechanism.
 
 ### What to test
 
-- **Callendar-Van Dusen equation**: Verify resistance-to-temperature conversion against known PT1000 values:
-  - 1000.0Ω → 0.0°C
-  - 1097.9Ω → 25.0°C
-  - 1385.1Ω → 100.0°C
-  - ~1194Ω → 50.0°C (common smoking temperature reference point)
-- **Negative temperature handling**: Resistance < 1000Ω uses quadratic formula branch
-- **C-to-F conversion**: `readTemperature()` correctly converts with offset: `tempC * 9/5 + 32 + TEMP_SENSOR_OFFSET`
-- **Sample averaging**: The rolling buffer in `readTemperature()` averages `TEMP_SAMPLE_COUNT` samples after buffer is full; uses single value before buffer fills
-- **Error propagation**: Sensor returning `< -100` (error value) causes `readTemperature()` to return `false`
-- **Temperature override**: When `_tempOverrideEnabled`, `readTemperature()` returns the override value and resets error count
+| Test case | Expected behavior |
+|---|---|
+| `setSafeAuger(ON)` with fan OFF | Auger stays OFF (rejected) |
+| `setSafeAuger(ON)` with fan ON | Auger turns ON |
+| `setSafeAuger(OFF)` with fan OFF | Auger turns OFF (always allowed) |
+| `emergencyStop()` | All 3 relays OFF |
+| `allOff()` | All 3 relays OFF |
+| `getStates()` | Reflects actual state after operations |
+| Out-of-range relay ID | `setRelay(3, ON)` is a no-op |
+| Active-low GPIO mapping | `RELAY_ON` → `digitalWrite(pin, LOW)` |
 
-### Why this matters
+### Debug mode interlock bypass (potential issue)
 
-Incorrect temperature conversion leads to wrong PID behavior. The Callendar-Van Dusen equation has two branches (positive/negative temps) and is easy to get wrong.
+`setManualRelay("auger", true)` at `temperature_control.cpp:838-841` calls `_relayControl->setAuger()` directly, **bypassing** `setSafeAuger()`. This means in debug mode, the auger can be turned on without the fan running. This is a design decision worth testing explicitly — either to verify it's intentional or to catch it as a bug.
 
 ---
 
-## 5. Setpoint Validation (Medium Priority)
+## 4. Temperature Conversion (High)
 
-**File**: `src/temperature_control.cpp:102-128` (`startSmoking()`), line 149-154 (`setSetpoint()`)
+**Files**: `src/max31865.cpp:272-290` (`rtdResistanceToTemperature()`), `src/temperature_control.cpp:530-568` (`readTemperature()`)
+
+### What to test — Callendar-Van Dusen
+
+| Resistance (Ω) | Expected Temp (°C) | Notes |
+|---|---|---|
+| 1000.0 | 0.0 | Exactly R₀ (PT1000 definition) |
+| 1097.9 | ~25.0 | Room temperature |
+| 1385.1 | ~100.0 | Boiling point |
+| 1194.0 | ~50.0 | Common smoking reference |
+| 900.0 | Negative | Below-zero branch (quadratic formula) |
+
+### What to test — `readTemperature()`
+
+| Scenario | Expected |
+|---|---|
+| Sensor returns valid °C | Converted to °F correctly |
+| Sensor returns < -100 (error) | Returns `false`, `_consecutiveErrors` incremented |
+| Temperature override enabled | Returns override value, resets error count |
+| Sample averaging | After `TEMP_SAMPLE_COUNT` calls, output is averaged |
+
+### Static buffer concern
+
+`readTemperature()` uses `static` local variables for the averaging buffer (`tempBuffer`, `bufferIndex`, `bufferFull`). This state persists across calls and cannot be reset between tests without code changes. This is a testability issue that should be addressed — either by moving the buffer into the class, or by adding a reset method gated behind `#ifdef UNIT_TEST`.
+
+---
+
+## 5. Reignite Logic (High)
+
+**File**: `src/temperature_control.cpp:659-748` (`handleReigniteState()`)
+
+The 4-phase reignite sequence is a safety-critical recovery mechanism. It has never been tested automatically.
 
 ### What to test
 
-- **Range enforcement**: Setpoints below `TEMP_MIN_SETPOINT` (150°F) and above `TEMP_MAX_SETPOINT` (500°F) are rejected
-- **startSmoking() rejects invalid temp**: Returns without changing state
-- **setSetpoint() rejects invalid temp**: Returns without changing `_setpoint`
-- **Boundary values**: Exactly 150°F (accepted), 149°F (rejected), 500°F (accepted), 501°F (rejected)
+| Phase | Duration | Relay states | Verify |
+|---|---|---|---|
+| 0: Fan Clear | 30s | Fan ON, auger OFF, igniter OFF | Ash cleared from firepot |
+| 1: Igniter Preheat | 60s | Fan ON, auger OFF, igniter ON | Hot rod heated |
+| 2: Feeding | 30s | Fan ON, auger ON (via `setSafeAuger`), igniter ON | Fresh pellets fed |
+| 3: Recovery | 120s | Fan ON, auger 50% duty, igniter OFF | Wait for temp rise |
+
+| Scenario | Expected |
+|---|---|
+| Recovery success (temp rises above 140°F) | Return to RUNNING, integral reset to 0, attempt counter incremented |
+| Recovery failure (temp stays low after 120s) | Attempt counter incremented, retry from phase 0 |
+| 3 failed attempts | ERROR state, `emergencyStop()` |
+| Reignite trigger inhibited during lid-open | `!_lidOpen` guard prevents false triggers |
+| PID output drops below max during detection window | `_pidMaxedSince` resets to 0, no reignite |
+| Phase 3 auger 50% duty | Auger toggles within `AUGER_CYCLE_TIME` at 50% |
+
+### Edge case: reignite counter incremented at different points
+
+On success, `_reigniteAttempts` is incremented *before* returning to RUNNING. On failure, it's incremented *before* checking the max. Verify that the counter reaches exactly `REIGNITE_MAX_ATTEMPTS` before triggering ERROR (not off-by-one).
 
 ---
 
-## 6. Auger Time-Proportioning (Medium Priority)
+## 6. Lid-Open Detection (High)
 
-**File**: `src/temperature_control.cpp:401-428` (`applyPIDOutput()`)
+**File**: `src/temperature_control.cpp:754-799` (`detectLidOpen()`)
 
 ### What to test
 
-- **Duty cycle calculation**: PID output of 0.5 → auger ON for 10s out of 20s cycle
-- **Minimum duty cycle**: PID output clamped at 0.15 → auger ON for 3s out of 20s
-- **Maximum duty cycle**: PID output of 1.0 → auger ON for full 20s cycle
-- **Cycle wrapping**: Verify auger state is correct across cycle boundaries
-- **State change minimization**: Relay is only toggled when the desired state changes (reduces relay wear)
+| Scenario | Expected |
+|---|---|
+| Rapid temp drop (dT/dt < -2.0°F/s) | `_lidOpen` = true, `_lidOpenTime` set |
+| Gradual temp drop (dT/dt = -1.0°F/s) | No lid detection |
+| Recovery: temp stabilizes for 30s | `_lidOpen` = false |
+| Recovery: temp drops again during stable window | `_lidStableTime` resets |
+| Integral freeze | During lid-open, `_integral` does not change in `updatePID()` |
+| Only active in RUNNING state | `detectLidOpen()` not called in other states, `_lidOpen` forced false |
+| Minimum duration (5s) | Lid-open flag persists even if temp stabilizes before 5s |
+
+### Note on derivative calculation
+
+The derivative `dTdt` is computed using `TEMP_CONTROL_INTERVAL / 1000.0` as `dt`, not the actual elapsed time. If `update()` is called at irregular intervals (e.g., due to WiFi activity or sensor retries), the derivative may be inaccurate. A test should verify behavior with irregular call timing.
 
 ---
 
-## 7. NVS Integral Persistence (Medium Priority)
+## 7. Setpoint Validation (Medium)
 
-**File**: `src/temperature_control.cpp:646-684`
+**File**: `src/temperature_control.cpp:131-139` (`startSmoking()`), lines 183-188 (`setSetpoint()`)
 
 ### What to test
 
-- **Save on state exit**: Integral and setpoint are saved when leaving RUNNING
-- **Restore within tolerance**: Saved integral is restored when new setpoint is within ±20°F of saved setpoint
-- **Discard outside tolerance**: Saved integral is discarded (set to 0) when setpoint differs by >20°F
-- **First boot**: No saved data → integral starts at 0.0
-- **Periodic save**: Save triggers every `PID_SAVE_INTERVAL` (300s) during RUNNING
-- **Persistence disabled**: When `ENABLE_PID_PERSISTENCE` is false, save/load are no-ops
+| Input | `startSmoking()` | `setSetpoint()` |
+|---|---|---|
+| 150°F (min boundary) | Accepted, state → STARTUP | Accepted |
+| 149°F (below min) | Rejected, state unchanged | Rejected |
+| 350°F (max from CLAUDE.md) / 500°F (max in config) | Accepted | Accepted |
+| 501°F (above max) | Rejected | Rejected |
+| 0°F | Rejected | Rejected |
+| NaN | Behavior undefined — needs test | Behavior undefined |
+| Negative temperature | Rejected | Rejected |
+
+### Note on max setpoint discrepancy
+
+CLAUDE.md says `TEMP_MAX_SETPOINT` is 350°F, but the config value should be checked. The web interface also needs to enforce the same limits client-side.
 
 ---
 
-## 8. Web API Input Validation (Low Priority, but worth covering)
+## 8. Auger Time-Proportioning (Medium)
+
+**File**: `src/temperature_control.cpp:488-515` (`applyPIDOutput()`)
+
+### What to test
+
+| PID Output | Expected On-Time (of 20s cycle) |
+|---|---|
+| 0.15 (minimum) | 3s on, 17s off |
+| 0.50 (balanced) | 10s on, 10s off |
+| 1.00 (maximum) | 20s on, 0s off |
+| 0.75 | 15s on, 5s off |
+
+| Scenario | Expected |
+|---|---|
+| Cycle boundary crossing | Auger state is correct when `cyclePosition` wraps |
+| State change minimization | Relay only toggled when desired state differs from current |
+| `setSafeAuger` used for ON | Safety interlock applies even during automatic control |
+| `setAuger` used for OFF | Direct call (no interlock needed for OFF) |
+
+---
+
+## 9. NVS Integral Persistence (Medium)
+
+**File**: `src/temperature_control.cpp:886-981`
+
+### What to test
+
+| Scenario | Expected |
+|---|---|
+| Save on RUNNING → COOLDOWN | Integral and setpoint written to NVS |
+| Save on RUNNING → ERROR | Integral and setpoint written to NVS |
+| Restore with matching setpoint (±20°F) | Saved integral restored |
+| Restore with different setpoint (>20°F diff) | Integral starts at 0.0 |
+| First boot (no saved data) | Integral starts at 0.0 |
+| Periodic save during RUNNING | Save triggers every 300s |
+| `ENABLE_PID_PERSISTENCE = false` | Save/load are no-ops |
+
+---
+
+## 10. MQTT Command Handling (Medium)
+
+**File**: `src/mqtt_client.cpp:154-201` (`handleMessage()`)
+
+The MQTT command handler IS implemented (contrary to what might be assumed from its simplicity). It parses incoming MQTT commands and routes them to the controller.
+
+### What to test
+
+| Command | Payload | Expected |
+|---|---|---|
+| `start` with valid temp | `"250"` | `startSmoking(250.0)` called |
+| `start` with empty payload | `""` | `startSmoking(225.0)` (default) |
+| `start` with out-of-range temp | `"999"` | `startSmoking(225.0)` (falls through to default) |
+| `stop` | any | `stop()` called |
+| `setpoint` with valid temp | `"275"` | `setSetpoint(275.0)` called |
+| `setpoint` with empty payload | `""` | No action (length check) |
+| `setpoint` with out-of-range | `"0"` | No action (range check) |
+| Unknown command | `"restart"` | Silently ignored |
+| Non-matching topic prefix | `"other/topic"` | Returns early |
+| Payload > 63 bytes | Long string | Truncated to 63 chars |
+
+### Subtle behavior: `atof` on invalid input
+
+`atof("abc")` returns 0.0, which is below `TEMP_MIN_SETPOINT`. This means invalid text payloads are silently rejected — but this is accidental, not validated.
+
+---
+
+## 11. History Ring Buffer (Low)
+
+**File**: `src/temperature_control.cpp:903-950`
+
+### What to test
+
+| Scenario | Expected |
+|---|---|
+| First N samples (N < max) | `getHistoryCount()` = N, samples in order |
+| Buffer full + wraparound | Oldest sample overwritten, `getHistorySampleAt(0)` returns oldest surviving |
+| `getHistorySampleAt()` with wrapped buffer | Correct index math: `(head + index) % max` |
+| Event buffer (64 max) | Same wraparound logic |
+| Sample interval enforcement | Samples only recorded every `HISTORY_SAMPLE_INTERVAL` ms |
+| Temperature scaling | `225.3°F` stored as `int16_t(2253)` |
+
+---
+
+## 12. Web API Input Validation (Low)
 
 **File**: `src/web_server.cpp`
 
 ### What to test
 
-- **Missing parameters**: POST to `/api/setpoint` without `temp` → 400 error
-- **Missing parameters**: POST to `/api/debug/mode` without `enabled` → 400 error
-- **Missing parameters**: POST to `/api/debug/relay` without `relay` or `state` → 400 error
-- **Invalid setpoint passthrough**: Setting temp to 0°F or 9999°F — does the controller reject it?
-- **Start with default temp**: POST to `/api/start` without `temp` → uses 225°F default
-- **Debug relay without debug mode**: Relay control is ignored (verified in controller, not web server)
+| Endpoint | Bad Input | Expected |
+|---|---|---|
+| `POST /api/setpoint` | Missing `temp` param | 400 error |
+| `POST /api/start` | `temp=999` | Rejected by controller or clamped |
+| `POST /api/debug/mode` | Missing `enabled` param | 400 error |
+| `POST /api/debug/relay` | Missing `relay` or `state` | 400 error |
+| `POST /api/debug/relay` | Relay control without debug mode | Rejected |
+| `GET /api/history` | Empty buffer | Valid JSON with empty arrays |
+| `GET /api/status` | During any state | Valid JSON with all fields |
+
+### Concurrency concern
+
+`ESPAsyncWebServer` runs request handlers on the async TCP task, while the main loop runs the state machine. There are no mutexes protecting shared state (`_currentTemp`, `_state`, relay states, history buffer). A race condition test would be valuable — e.g., reading `/api/status` while the state machine is mid-transition.
 
 ---
 
-## 9. MQTT Message Formatting (Low Priority)
+## 13. Cooldown Logic (Low)
 
-**File**: `src/mqtt_client.cpp:80-118`
+**File**: `src/temperature_control.cpp:356-374`
+
+The cooldown-to-shutdown transition uses a compound condition that's easy to get wrong:
+
+```cpp
+if (elapsed < SHUTDOWN_COOL_TIMEOUT && _currentTemp > TEMP_MIN_SAFE + 20)
+```
+
+This means cooldown continues **only if** both the timeout hasn't elapsed AND temp is above threshold. Either condition being false triggers shutdown.
 
 ### What to test
 
-- **Topic construction**: All topics correctly prefixed with `home/smoker/`
-- **Temperature formatting**: Published as "225.0" (one decimal), not "225.00000"
-- **Relay state strings**: Published as "on"/"off" (lowercase), not "true"/"false"
-- **State name**: Published using `getStateName()` output (e.g., "Running", not "STATE_RUNNING")
-- **messageCallback()**: Currently unimplemented — incoming MQTT commands are silently dropped. This is a functional gap, not just a test gap.
+| Scenario | Expected |
+|---|---|
+| Timeout expires, temp still high | Transitions to SHUTDOWN |
+| Temp drops below threshold, timeout not expired | Transitions to SHUTDOWN |
+| Both conditions still active | Stays in COOLDOWN, fan ON |
+
+---
+
+## Architectural Gaps Not Covered by Unit Tests
+
+These are systemic issues that can't be caught by unit tests alone:
+
+### 1. No `[env:native]` build environment
+
+PlatformIO's `native` platform allows running C++ tests on the host machine without ESP32 hardware. Without this, there is no way to run automated tests in CI/CD.
+
+### 2. No CI/CD test step
+
+`.github/workflows/build.yml` only runs `pio run -e feather_esp32s3`. Even after adding tests, CI won't run them until a `pio test -e native` step is added.
+
+### 3. Hardware coupling
+
+Most logic is tightly coupled to Arduino APIs (`millis()`, `digitalWrite()`, `SPI`, `Preferences`, `WiFi`). To test on a host machine, these need mocks or abstractions:
+
+| Dependency | Mocking approach |
+|---|---|
+| `millis()` | Inject a time function or use `#ifdef UNIT_TEST` to provide a settable mock |
+| `digitalWrite()` / `pinMode()` | Record calls to verify GPIO behavior |
+| `SPI` | Not needed (temperature math is testable without SPI) |
+| `Preferences` (NVS) | In-memory key-value store |
+| `Serial.printf()` | No-op or capture to buffer |
+
+### 4. Static local variables in `readTemperature()`
+
+The averaging buffer uses `static` locals that persist between test cases. Either move these into the class or add a `resetSampleBuffer()` method.
 
 ---
 
 ## Recommended Implementation Strategy
 
-### Phase 1: Set up the native test environment
+### Phase 1: Infrastructure
 
-Add a `[env:native]` section to `platformio.ini` for host-based testing. PlatformIO's Unity framework is the simplest option for C/C++ embedded projects. Create mock/stub implementations of `MAX31865` and `RelayControl` that record calls rather than touching hardware.
+Add a `[env:native]` section to `platformio.ini`:
 
 ```ini
 [env:native]
 platform = native
 test_framework = unity
 build_flags = -DUNIT_TEST
+build_src_filter = -<main.cpp> -<web_server.cpp> -<mqtt_client.cpp> -<tm1638_display.cpp> -<encoder.cpp> -<logger.cpp> -<telnet_server.cpp> -<tui_server.cpp> -<http_ota.cpp>
 ```
 
-### Phase 2: Test the PID math (highest ROI)
+Create mock headers in `test/mocks/`:
+- `Arduino.h` — stubs for `millis()`, `digitalWrite()`, `pinMode()`, `Serial`, `delay()`
+- `Preferences.h` — in-memory NVS mock
+- `SPI.h` — no-op or recording stub
 
-The PID calculation in `updatePID()` is pure arithmetic on class member variables. With mocked dependencies, you can:
-1. Set `_currentTemp`, `_setpoint`, `_previousTemp`, and `_lastPidUpdate` directly
-2. Call `updatePID()`
-3. Assert `_pidOutput` is within expected bounds
+### Phase 2: PID tests (highest ROI)
 
-This catches regressions in the control algorithm without any hardware.
+Write tests that:
+1. Construct `TemperatureController` with mock sensor + relay
+2. Set internal state directly (or via setters)
+3. Call `updatePID()`
+4. Assert on output values and relay calls
 
-### Phase 3: Test state transitions
+### Phase 3: State machine tests
 
-With mocked sensor (returns configurable temperatures) and mocked relays (records on/off calls), you can drive the state machine through all transitions and verify:
-- Correct relay states at each phase
-- Correct transition triggers
-- Safety mechanisms fire when they should
+Drive the controller through complete cycles:
+- IDLE → STARTUP → RUNNING → COOLDOWN → SHUTDOWN → IDLE
+- RUNNING → REIGNITE (4 phases) → RUNNING
+- RUNNING → REIGNITE (3 failures) → ERROR
+- Sensor failure → ERROR → `resetError()` → IDLE
 
-### Phase 4: Test safety interlocks
+### Phase 4: Safety interlock tests
 
-`RelayControl` is already nearly hardware-independent (it just calls `digitalWrite`). Mock `digitalWrite` and `pinMode` in the native environment and test the interlock logic directly.
+Test `RelayControl` in isolation:
+- Mock `digitalWrite()` to record calls
+- Verify auger interlock logic
+- Verify emergency stop
 
-### Key architectural consideration
+### Phase 5: CI/CD integration
 
-Most of the business logic is tightly coupled to Arduino APIs (`millis()`, `digitalWrite()`, `SPI`, `Preferences`). To make modules testable on a host machine, you'll need to either:
+Add to `.github/workflows/build.yml`:
 
-1. **Inject time**: Pass a `millis()` function pointer or use a time interface that can be stubbed in tests
-2. **Abstract hardware**: The existing `MAX31865*` and `RelayControl*` pointers in `TemperatureController` already provide seams — create test doubles that implement the same interface
-3. **Compile-time mocks**: Use `#ifdef UNIT_TEST` to swap Arduino-specific calls with stubs
+```yaml
+- name: Run unit tests
+  run: pio test -e native --verbose
+```
 
 ---
 
 ## Summary Table
 
-| Priority | Module | Risk if Untested | Testability |
-|----------|--------|-----------------|-------------|
-| Critical | PID controller math | Fire hazard / fire dies | High (pure math) |
-| Critical | State machine transitions | Unsafe relay states | High (with mocks) |
-| Critical | Safety interlocks | Unburned pellet accumulation | High (minimal deps) |
-| High | Temperature conversion | Incorrect control behavior | High (pure math) |
-| Medium | Setpoint validation | Out-of-range operation | High (simple logic) |
-| Medium | Auger time-proportioning | Incorrect fuel delivery | Medium (timing deps) |
-| Medium | NVS integral persistence | Degraded warm-start | Medium (NVS mock needed) |
-| Low | Web API validation | Bad input accepted | Low (async web server) |
-| Low | MQTT formatting | Home Assistant confusion | Medium (string checks) |
+| # | Module | Risk if Untested | Testability | Priority |
+|---|--------|-----------------|-------------|----------|
+| 1 | PID controller math | Fire hazard / fire dies | High (pure math) | Critical |
+| 2 | State machine transitions | Unsafe relay states | High (with mocks) | Critical |
+| 3 | Safety interlocks | Unburned pellet buildup | High (minimal deps) | Critical |
+| 4 | Temperature conversion | Incorrect control | High (pure math) | High |
+| 5 | Reignite logic | Failed recovery / stuck in reignite | Medium (timing deps) | High |
+| 6 | Lid-open detection | PID overshoot / false triggers | Medium (timing deps) | High |
+| 7 | Setpoint validation | Out-of-range operation | High (simple logic) | Medium |
+| 8 | Auger time-proportioning | Incorrect fuel delivery | Medium (timing deps) | Medium |
+| 9 | NVS integral persistence | Degraded warm-start | Medium (NVS mock) | Medium |
+| 10 | MQTT command handling | Incorrect remote control | Medium (string parsing) | Medium |
+| 11 | History ring buffer | Corrupt web graph data | High (pure logic) | Low |
+| 12 | Web API validation | Bad input accepted | Low (async server) | Low |
+| 13 | Cooldown logic | Premature/delayed shutdown | High (simple logic) | Low |
