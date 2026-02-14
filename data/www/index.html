@@ -178,54 +178,46 @@
         </main>
 
         <div id="tab-pid" class="tab-panel" style="display:none;">
-            <!-- PID Block Diagram -->
-            <section class="card pid-diagram-card">
-                <h3>PID Control Flow</h3>
-                <canvas id="pid-block-diagram"></canvas>
+            <!-- Animated Smoker Cross-Section -->
+            <section class="card smoker-scene-card">
+                <h3>How Your Smoker Works</h3>
+                <canvas id="smoker-scene"></canvas>
+                <div class="smoker-legend">
+                    <span><span class="legend-swatch" style="background:#ff6b35"></span>Fire</span>
+                    <span><span class="legend-swatch" style="background:#aaa"></span>Smoke</span>
+                    <span><span class="legend-swatch" style="background:#8B6914"></span>Pellets</span>
+                    <span><span class="legend-swatch" style="background:#3498db"></span>Air</span>
+                </div>
             </section>
 
-            <!-- PID Terms Breakdown + Auger Duty Cycle -->
-            <div class="pid-mid-row">
-                <section class="card pid-terms-card">
-                    <h3>PID Terms</h3>
-                    <canvas id="pid-terms-bar"></canvas>
-                    <div class="pid-values-grid">
-                        <div class="pid-val"><span class="pid-label">P</span><span id="pv-p" class="pid-num">--</span></div>
-                        <div class="pid-val"><span class="pid-label">I</span><span id="pv-i" class="pid-num">--</span></div>
-                        <div class="pid-val"><span class="pid-label">D</span><span id="pv-d" class="pid-num">--</span></div>
-                        <div class="pid-val"><span class="pid-label">Out</span><span id="pv-out" class="pid-num">--</span></div>
+            <!-- PID Brain: Three Visual Metaphors -->
+            <section class="card pid-brain-card">
+                <h3>The PID Brain</h3>
+                <div class="pid-brain-row">
+                    <div class="brain-col">
+                        <canvas id="pid-spring"></canvas>
+                        <span class="brain-label" style="color:#3498db">Proportional</span>
+                        <span class="brain-desc">How far am I from target?</span>
                     </div>
-                </section>
-                <section class="card pid-auger-card">
-                    <h3>Auger Cycle</h3>
-                    <canvas id="pid-auger-gauge"></canvas>
-                    <div class="auger-stats">
-                        <div><span class="pid-label">Duty</span><span id="pv-duty">--%</span></div>
-                        <div><span class="pid-label">Cycle</span><span id="pv-cycle">--s</span></div>
+                    <div class="brain-col">
+                        <canvas id="pid-bucket"></canvas>
+                        <span class="brain-label" style="color:#2ecc71">Integral</span>
+                        <span class="brain-desc">How long have I been off?</span>
                     </div>
-                </section>
-            </div>
-
-            <!-- Status Indicators -->
-            <section class="card pid-status-card">
-                <div class="pid-status-row">
-                    <div class="pid-indicator" id="pid-ind-lid">
-                        <span class="ind-dot"></span>
-                        <span>Lid</span>
-                    </div>
-                    <div class="pid-indicator" id="pid-ind-reignite">
-                        <span class="ind-dot"></span>
-                        <span>Reignite</span>
-                        <span id="pv-reignite" class="ind-count">0</span>
-                    </div>
-                    <div class="pid-indicator" id="pid-ind-saturated">
-                        <span class="ind-dot"></span>
-                        <span>Saturated</span>
+                    <div class="brain-col">
+                        <canvas id="pid-speedo"></canvas>
+                        <span class="brain-label" style="color:#ff6b35">Derivative</span>
+                        <span class="brain-desc">How fast am I changing?</span>
                     </div>
                 </div>
             </section>
 
-            <!-- PID Time Series Chart -->
+            <!-- Feedback Loop Flow -->
+            <section class="card feedback-card">
+                <canvas id="feedback-loop"></canvas>
+            </section>
+
+            <!-- PID Time Series Chart (retained) -->
             <section class="card pid-chart-card">
                 <div class="graph-header">
                     <h3>PID History</h3>

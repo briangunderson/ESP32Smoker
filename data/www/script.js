@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchHistory();
   updateStatus();
   setInterval(updateStatus, POLL_MS);
-  window.addEventListener('resize', function() { drawGraph(); if (document.getElementById('tab-pid') && document.getElementById('tab-pid').classList.contains('active')) { drawPidDiagram(); drawPidTermsBar(); drawAugerGauge(); drawPidChart(); } });
+  window.addEventListener('resize', function() { drawGraph(); if (document.getElementById('tab-pid') && document.getElementById('tab-pid').classList.contains('active')) { drawPidChart(); } });
   checkVersionStatus();
 });
 
@@ -588,8 +588,11 @@ function switchTab(tab) {
     document.getElementById('tab-dashboard').classList.remove('active');
     document.getElementById('tab-dashboard').style.display = 'none';
     // Trigger initial draw
-    requestAnimationFrame(function() { drawPidDiagram(); drawPidTermsBar(); drawAugerGauge(); drawPidChart(); });
+    initParticles();
+    startPidAnim();
+    drawPidChart();
   } else {
+    stopPidAnim();
     document.querySelectorAll('.tab-btn')[0].classList.add('active');
     var el = document.getElementById('tab-dashboard');
     el.style.display = 'block';
@@ -633,410 +636,848 @@ function setPidRange(sec) {
   drawPidChart();
 }
 
-// --- PID Visual Updates ---
-function updatePidVisuals(s) {
-  if (!s.pid) return;
-  var pid = s.pid;
+// --- PID Animated Educational Visualization ---
 
-  // Update numeric values
-  document.getElementById('pv-p').textContent = parseFloat(pid.p).toFixed(3);
-  document.getElementById('pv-i').textContent = parseFloat(pid.i).toFixed(3);
-  document.getElementById('pv-d').textContent = parseFloat(pid.d).toFixed(3);
-  document.getElementById('pv-out').textContent = parseFloat(pid.output).toFixed(1) + '%';
-  document.getElementById('pv-duty').textContent = parseFloat(pid.output).toFixed(0) + '%';
-  var remaining = Math.max(0, Math.round((parseInt(pid.cycleRemaining) || 0) / 1000));
-  document.getElementById('pv-cycle').textContent = remaining + 's';
-  document.getElementById('pv-reignite').textContent = pid.reigniteAttempts || 0;
+// Scene state updated from main updateUI loop
+var pidSceneState = { fan: false, auger: false, igniter: false, temp: 70, setpoint: 225, output: 0 };
 
-  // Status indicators
-  var lidInd = document.getElementById('pid-ind-lid');
-  if (pid.lidOpen) lidInd.classList.add('active'); else lidInd.classList.remove('active');
+// Particle system - pre-allocated pool, zero GC during animation
+var MAX_FIRE = 60;
+var MAX_SMOKE = 40;
+var MAX_PARTICLES = MAX_FIRE + MAX_SMOKE;
+var particles = [];
+var displayNeedleAngle = Math.PI * 0.5; // speedometer needle, starts center
 
-  var reigniteInd = document.getElementById('pid-ind-reignite');
-  if ((pid.reigniteAttempts || 0) > 0) reigniteInd.classList.add('active'); else reigniteInd.classList.remove('active');
-
-  var satInd = document.getElementById('pid-ind-saturated');
-  if (parseFloat(pid.output) >= 99.5 || parseFloat(pid.output) <= 15.5) satInd.classList.add('active'); else satInd.classList.remove('active');
-
-  // Redraw canvases
-  drawPidDiagram();
-  drawPidTermsBar();
-  drawAugerGauge();
-  drawPidChart();
+function initParticles() {
+  particles = [];
+  for (var i = 0; i < MAX_PARTICLES; i++) {
+    particles.push({ active: false, type: 'fire', x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 3, opacity: 1 });
+  }
 }
 
-// --- PID Block Diagram (Canvas) ---
-function drawPidDiagram() {
-  var canvas = document.getElementById('pid-block-diagram');
-  if (!canvas) return;
+function spawnFireParticle(x, y) {
+  for (var i = 0; i < MAX_FIRE; i++) {
+    if (!particles[i].active) {
+      var p = particles[i];
+      p.active = true;
+      p.type = 'fire';
+      p.x = x + (Math.random() - 0.5) * 16;
+      p.y = y;
+      p.vx = (Math.random() - 0.5) * 12;
+      p.vy = -(30 + Math.random() * 40);
+      p.life = 0;
+      p.maxLife = 0.4 + Math.random() * 0.5;
+      p.size = 2 + Math.random() * 3;
+      p.opacity = 0.8 + Math.random() * 0.2;
+      return;
+    }
+  }
+}
+
+function spawnSmokeParticle(x, y) {
+  for (var i = MAX_FIRE; i < MAX_PARTICLES; i++) {
+    if (!particles[i].active) {
+      var p = particles[i];
+      p.active = true;
+      p.type = 'smoke';
+      p.x = x + (Math.random() - 0.5) * 6;
+      p.y = y;
+      p.vx = (Math.random() - 0.5) * 8;
+      p.vy = -(10 + Math.random() * 15);
+      p.life = 0;
+      p.maxLife = 1.0 + Math.random() * 1.0;
+      p.size = 3 + Math.random() * 3;
+      p.opacity = 0.3 + Math.random() * 0.2;
+      return;
+    }
+  }
+}
+
+function updateParticles(dt) {
+  for (var i = 0; i < MAX_PARTICLES; i++) {
+    var p = particles[i];
+    if (!p.active) continue;
+    p.life += dt;
+    if (p.life >= p.maxLife) { p.active = false; continue; }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if (p.type === 'fire') {
+      p.size *= (1 - dt * 1.5);
+      if (p.size < 0.3) p.size = 0.3;
+    } else {
+      p.size += dt * 4;
+      p.vx += (Math.random() - 0.5) * 20 * dt;
+    }
+  }
+}
+
+// Animation loop controller
+var pidAnimRunning = false;
+var pidAnimId = 0;
+var TARGET_FPS = 18;
+var PID_FRAME_MS = 1000 / TARGET_FPS;
+var pidLastFrameTime = 0;
+var lastAugerAngle = 0;
+var lastFanAngle = 0;
+
+function pidAnimLoop(timestamp) {
+  if (!pidAnimRunning) return;
+  pidAnimId = requestAnimationFrame(pidAnimLoop);
+  var elapsed = timestamp - pidLastFrameTime;
+  if (elapsed < PID_FRAME_MS) return;
+  var dt = Math.min(elapsed / 1000, 0.1);
+  pidLastFrameTime = timestamp;
+
+  updateParticles(dt);
+  drawSmokerScene(timestamp);
+  drawPidSpring(timestamp);
+  drawPidBucket(timestamp);
+  drawPidSpeedo(timestamp);
+  drawFeedbackLoop(timestamp);
+}
+
+function startPidAnim() {
+  if (pidAnimRunning) return;
+  pidAnimRunning = true;
+  pidLastFrameTime = performance.now();
+  pidAnimId = requestAnimationFrame(pidAnimLoop);
+}
+
+function stopPidAnim() {
+  pidAnimRunning = false;
+  if (pidAnimId) { cancelAnimationFrame(pidAnimId); pidAnimId = 0; }
+}
+
+// Canvas DPR helper
+function setupCanvas(id) {
+  var c = document.getElementById(id);
+  if (!c) return null;
   var dpr = window.devicePixelRatio || 1;
-  var rect = canvas.getBoundingClientRect();
-  var W = rect.width, H = rect.height;
-  if (W === 0 || H === 0) return;
-  canvas.width = W * dpr;
-  canvas.height = H * dpr;
-  var ctx = canvas.getContext('2d');
+  var r = c.getBoundingClientRect();
+  var W = r.width, H = r.height;
+  if (W === 0 || H === 0) return null;
+  c.width = W * dpr;
+  c.height = H * dpr;
+  var ctx = c.getContext('2d');
   ctx.scale(dpr, dpr);
+  return { ctx: ctx, W: W, H: H };
+}
 
+// --- Smoker Scene Renderer ---
+function drawSmokerScene(timestamp) {
+  var s = setupCanvas('smoker-scene');
+  if (!s) return;
+  var ctx = s.ctx, W = s.W, H = s.H;
+  var st = pidSceneState;
   var pid = pidLastData;
-  var p = parseFloat(pid.p) || 0;
-  var i = parseFloat(pid.i) || 0;
-  var d = parseFloat(pid.d) || 0;
-  var out = parseFloat(pid.output) || 0;
-  var err = parseFloat(pid.error) || 0;
 
-  // Clear
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = '#0d0d0d';
   ctx.fillRect(0, 0, W, H);
 
-  // Layout
-  var cy = H / 2;           // vertical center
-  var margin = 16;
-  var boxH = 36;
-  var boxW = 56;
-  var sumR = 14;             // summing junction radius
+  // Reference layout 400x280, scaled to fit canvas
+  var scaleX = W / 400, scaleY = H / 280;
+  var sc = Math.min(scaleX, scaleY);
+  var ox = (W - 400 * sc) / 2;
+  var oy = (H - 280 * sc) / 2;
+  function sx(v) { return ox + v * sc; }
+  function sy(v) { return oy + v * sc; }
+  function sw(v) { return v * sc; }
 
-  // Positions (left to right flow)
-  var xSp = margin + 30;            // setpoint label
-  var xSum = xSp + 60;              // summing junction
-  var xPID = xSum + 65;             // PID block center
-  var xOut = xPID + boxW/2 + 50;    // output label
-  var xPlant = xOut + 50;           // plant block
-  var xTemp = Math.min(xPlant + boxW/2 + 40, W - margin - 20);  // temp output
+  // Smoker body (main chamber)
+  ctx.fillStyle = '#1e1e1e';
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(sx(80), sy(60), sw(220), sw(160), sw(8));
+  ctx.fill();
+  ctx.stroke();
 
-  // Flow arrow color based on output
-  var flowColor = out > 80 ? '#e74c3c' : out > 40 ? '#ff6b35' : '#2ecc71';
-  var animPhase = (Date.now() % 2000) / 2000;  // 0-1 animation phase
+  // Hopper (left, trapezoid)
+  ctx.fillStyle = '#2a2a2a';
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(sx(10), sy(60));
+  ctx.lineTo(sx(70), sy(60));
+  ctx.lineTo(sx(60), sy(160));
+  ctx.lineTo(sx(20), sy(160));
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
 
-  // Helper: draw block
-  function drawBlock(x, y, w, h, label, value, color) {
-    ctx.fillStyle = hexAlpha(color, 0.15);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
+  // Pellet dots inside hopper
+  ctx.fillStyle = '#8B6914';
+  var pelletSeed = 42;
+  for (var pi = 0; pi < 18; pi++) {
+    pelletSeed = (pelletSeed * 1103515245 + 12345) & 0x7fffffff;
+    var px = sx(25 + (pelletSeed % 35));
+    pelletSeed = (pelletSeed * 1103515245 + 12345) & 0x7fffffff;
+    var py = sy(75 + (pelletSeed % 75));
     ctx.beginPath();
-    ctx.roundRect(x - w/2, y - h/2, w, h, 4);
-    ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#999';
-    ctx.font = '9px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(label, x, y - 5);
-    ctx.fillStyle = color;
-    ctx.font = 'bold 12px SF Mono, Consolas, monospace';
-    ctx.fillText(value, x, y + 10);
-  }
-
-  // Helper: draw arrow
-  function drawArrow(x1, y1, x2, y2, color) {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-    // Arrowhead
-    var angle = Math.atan2(y2 - y1, x2 - x1);
-    var aLen = 6;
-    ctx.beginPath();
-    ctx.moveTo(x2, y2);
-    ctx.lineTo(x2 - aLen * Math.cos(angle - 0.4), y2 - aLen * Math.sin(angle - 0.4));
-    ctx.lineTo(x2 - aLen * Math.cos(angle + 0.4), y2 - aLen * Math.sin(angle + 0.4));
-    ctx.closePath();
-    ctx.fillStyle = color;
+    ctx.arc(px, py, sw(2.5), 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Helper: animated flow dots
-  function drawFlowDots(x1, y1, x2, y2, color) {
-    var dx = x2 - x1, dy = y2 - y1;
-    var len = Math.sqrt(dx*dx + dy*dy);
-    var dots = 3;
-    for (var j = 0; j < dots; j++) {
-      var t = ((animPhase + j / dots) % 1);
-      var fx = x1 + dx * t, fy = y1 + dy * t;
-      ctx.beginPath();
-      ctx.arc(fx, fy, 2, 0, Math.PI * 2);
-      ctx.fillStyle = hexAlpha(color, 0.4 + 0.4 * Math.sin(t * Math.PI));
-      ctx.fill();
-    }
-  }
+  // Auger tube
+  ctx.fillStyle = '#333';
+  ctx.fillRect(sx(60), sy(150), sw(50), sw(14));
+  ctx.strokeStyle = '#555';
+  ctx.strokeRect(sx(60), sy(150), sw(50), sw(14));
 
-  // --- Draw the diagram ---
-
-  // Setpoint label
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 13px -apple-system, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('SP', xSp, cy - 10);
-  ctx.fillStyle = '#aaa';
-  ctx.font = '11px SF Mono, Consolas, monospace';
-  ctx.fillText((parseFloat(pidLastData.error) ? (parseFloat(pidLastData.error) + (pidHistory.length > 0 ? pidHistory[pidHistory.length-1].sp : 225)).toFixed(0) : '--') + '\u00B0', xSp, cy + 6);
-
-  // Arrow: SP -> Sum
-  drawArrow(xSp + 20, cy, xSum - sumR, cy, '#888');
-  drawFlowDots(xSp + 20, cy, xSum - sumR, cy, '#888');
-
-  // Summing junction (circle with +/-)
+  // Auger screw (sine wave inside tube, rotates when auger ON)
+  if (pid.augerOn) lastAugerAngle += 0.15;
   ctx.strokeStyle = '#888';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(xSum, cy, sumR, 0, Math.PI * 2);
+  for (var ai = 0; ai <= 30; ai++) {
+    var at = ai / 30;
+    var ax = sx(62 + at * 46);
+    var ay = sy(157) + Math.sin(at * 8 * Math.PI + lastAugerAngle) * sw(4);
+    if (ai === 0) ctx.moveTo(ax, ay); else ctx.lineTo(ax, ay);
+  }
   ctx.stroke();
-  ctx.fillStyle = '#aaa';
-  ctx.font = 'bold 11px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('+', xSum - 5, cy - 2);
-  ctx.fillText('\u2013', xSum + 6, cy + 10);
 
-  // Error value below summing junction
-  ctx.fillStyle = err > 0 ? '#e74c3c' : err < 0 ? '#3498db' : '#888';
-  ctx.font = '10px SF Mono, Consolas, monospace';
-  ctx.fillText('e=' + err.toFixed(1), xSum, cy + sumR + 14);
+  // Firepot
+  var fpX = sx(120), fpY = sy(190), fpW = sw(60), fpH = sw(28);
+  ctx.fillStyle = '#2a2a2a';
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 1.5;
+  ctx.fillRect(fpX, fpY, fpW, fpH);
+  ctx.strokeRect(fpX, fpY, fpW, fpH);
 
-  // Arrow: Sum -> PID
-  drawArrow(xSum + sumR, cy, xPID - boxW/2, cy, flowColor);
-  drawFlowDots(xSum + sumR, cy, xPID - boxW/2, cy, flowColor);
+  // Spawn fire particles (rate proportional to PID output)
+  if (st.output > 5 && st.temp > 80) {
+    var spawnRate = Math.max(1, Math.floor(st.output / 25));
+    for (var fi = 0; fi < spawnRate; fi++) {
+      spawnFireParticle(120 + 30, 190 - 5);
+    }
+  }
 
-  // PID Block (show 3 sub-blocks stacked)
-  var pidTop = cy - 46;
-  var pidBlockH = 28;
-  var pidGap = 4;
-  // P block
-  drawBlock(xPID, pidTop + pidBlockH/2, boxW, pidBlockH, 'P', p.toFixed(3), '#3498db');
-  // I block
-  drawBlock(xPID, pidTop + pidBlockH + pidGap + pidBlockH/2, boxW, pidBlockH, 'I', i.toFixed(3), '#2ecc71');
-  // D block
-  drawBlock(xPID, pidTop + 2*(pidBlockH + pidGap) + pidBlockH/2, boxW, pidBlockH, 'D', d.toFixed(3), '#ff6b35');
+  // Draw fire particles
+  for (var i = 0; i < MAX_FIRE; i++) {
+    var p = particles[i];
+    if (!p.active) continue;
+    var frac = p.life / p.maxLife;
+    var hue = 20 + (1 - frac) * 25;
+    var light = 90 - frac * 40;
+    var alpha = p.opacity * (1 - frac);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'hsl(' + hue + ',100%,' + light + '%)';
+    ctx.beginPath();
+    ctx.arc(sx(p.x), sy(p.y), sw(p.size), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 
-  // Sum symbol after PID blocks
-  var xPidSum = xPID + boxW/2 + 20;
-  ctx.strokeStyle = '#888';
-  ctx.lineWidth = 1;
+  // Deflector plate
+  ctx.strokeStyle = '#777';
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(xPidSum, cy, 8, 0, Math.PI * 2);
+  ctx.moveTo(sx(105), sy(155));
+  ctx.lineTo(sx(200), sy(140));
   ctx.stroke();
-  ctx.fillStyle = '#aaa';
-  ctx.font = '10px sans-serif';
-  ctx.fillText('\u03A3', xPidSum, cy + 3);
 
-  // Lines from P/I/D to sum circle
-  var pBlockRight = xPID + boxW/2;
+  // Grate (dashed lines)
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([sw(4), sw(3)]);
+  for (var gi = 0; gi < 3; gi++) {
+    var gy = sy(110 + gi * 12);
+    ctx.beginPath();
+    ctx.moveTo(sx(95), gy);
+    ctx.lineTo(sx(270), gy);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Food shapes on grate
+  ctx.fillStyle = '#8B4513';
+  ctx.beginPath();
+  ctx.ellipse(sx(160), sy(104), sw(22), sw(8), 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#A0522D';
+  ctx.beginPath();
+  ctx.ellipse(sx(220), sy(106), sw(16), sw(6), 0.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Chimney
+  ctx.fillStyle = '#1e1e1e';
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1.5;
+  ctx.fillRect(sx(250), sy(10), sw(24), sw(55));
+  ctx.strokeRect(sx(250), sy(10), sw(24), sw(55));
+  ctx.fillStyle = '#333';
+  ctx.fillRect(sx(245), sy(8), sw(34), sw(6));
+
+  // Spawn smoke at chimney top
+  if (st.output > 5 && st.temp > 80) {
+    if (Math.random() < 0.3) spawnSmokeParticle(262, 8);
+  }
+
+  // Draw smoke particles
+  for (var i = MAX_FIRE; i < MAX_PARTICLES; i++) {
+    var p = particles[i];
+    if (!p.active) continue;
+    var frac = p.life / p.maxLife;
+    var alpha = p.opacity * (1 - frac);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#888';
+    ctx.beginPath();
+    ctx.arc(sx(p.x), sy(p.y), sw(p.size), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Fan (bottom left, 3 rotating blades)
+  var fanCx = sx(50), fanCy = sy(210), fanR = sw(16);
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(fanCx, fanCy, fanR, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#444';
+  ctx.beginPath();
+  ctx.arc(fanCx, fanCy, sw(3), 0, Math.PI * 2);
+  ctx.fill();
+  if (st.fan) lastFanAngle += 0.2;
+  ctx.fillStyle = '#777';
+  for (var bi = 0; bi < 3; bi++) {
+    var ba = lastFanAngle + bi * (Math.PI * 2 / 3);
+    ctx.beginPath();
+    ctx.moveTo(fanCx, fanCy);
+    ctx.arc(fanCx, fanCy, fanR - sw(2), ba - 0.3, ba + 0.3);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Air flow dashes (fan to firepot)
+  if (st.fan) {
+    ctx.strokeStyle = hexAlpha('#3498db', 0.5);
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([sw(3), sw(4)]);
+    var airPhase = (timestamp / 300) % 20;
+    for (var afi = 0; afi < 5; afi++) {
+      var afX = sx(75 + ((afi * 10 + airPhase) % 50));
+      ctx.beginPath();
+      ctx.moveTo(afX, sy(205));
+      ctx.lineTo(afX + sw(6), sy(200));
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  // Thermometer (right side)
+  var thX = sx(310), thY = sy(75), thH = sw(130), thW = sw(8);
+  ctx.fillStyle = '#222';
+  ctx.beginPath();
+  ctx.roundRect(thX, thY, thW, thH, sw(4));
+  ctx.fill();
   ctx.strokeStyle = '#555';
   ctx.lineWidth = 1;
-  [pidTop + pidBlockH/2, pidTop + pidBlockH + pidGap + pidBlockH/2, pidTop + 2*(pidBlockH + pidGap) + pidBlockH/2].forEach(function(by) {
-    ctx.beginPath();
-    ctx.moveTo(pBlockRight, by);
-    ctx.lineTo(xPidSum - 8, cy);
-    ctx.stroke();
-  });
+  ctx.beginPath();
+  ctx.roundRect(thX, thY, thW, thH, sw(4));
+  ctx.stroke();
 
-  // Arrow: PID Sum -> Output
-  drawArrow(xPidSum + 8, cy, xOut - 16, cy, flowColor);
-  drawFlowDots(xPidSum + 8, cy, xOut - 16, cy, flowColor);
+  // Mercury fill
+  var tempFrac = Math.max(0, Math.min(1, (st.temp - 50) / 450));
+  var mercuryH = thH * tempFrac;
+  ctx.fillStyle = '#e74c3c';
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(thX, thY, thW, thH, sw(4));
+  ctx.clip();
+  ctx.fillRect(thX, thY + thH - mercuryH, thW, mercuryH);
+  ctx.restore();
 
-  // Output value
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 14px SF Mono, Consolas, monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText(out.toFixed(1) + '%', xOut, cy - 2);
-  ctx.fillStyle = '#666';
-  ctx.font = '9px -apple-system, sans-serif';
-  ctx.fillText('OUTPUT', xOut, cy + 12);
+  // Setpoint tick
+  var spFrac = Math.max(0, Math.min(1, (st.setpoint - 50) / 450));
+  var spTickY = thY + thH - thH * spFrac;
+  ctx.strokeStyle = '#2ecc71';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(thX - sw(3), spTickY);
+  ctx.lineTo(thX + thW + sw(3), spTickY);
+  ctx.stroke();
 
-  // Arrow: Output -> Plant
-  drawArrow(xOut + 26, cy, xPlant - boxW/2, cy, flowColor);
-
-  // Plant block (Smoker)
-  drawBlock(xPlant, cy, boxW + 8, boxH + 4, 'SMOKER', '', '#666');
-  // Draw a small flame icon inside
-  ctx.fillStyle = out > 50 ? '#ff6b35' : out > 20 ? '#ff9f43' : '#666';
-  ctx.font = '16px sans-serif';
-  ctx.fillText('\uD83D\uDD25', xPlant, cy + 4);
-
-  // Arrow: Plant -> Temp
-  drawArrow(xPlant + boxW/2 + 4, cy, xTemp, cy, '#ff6b35');
-
-  // Temperature output
+  // Temp label
   ctx.fillStyle = '#ff6b35';
-  ctx.font = 'bold 14px SF Mono, Consolas, monospace';
-  ctx.textAlign = 'center';
-  var curTemp = pidHistory.length > 0 ? pidHistory[pidHistory.length - 1].temp : 0;
-  ctx.fillText(curTemp ? curTemp.toFixed(0) + '\u00B0' : '--', xTemp, cy - 2);
-  ctx.fillStyle = '#666';
-  ctx.font = '9px -apple-system, sans-serif';
-  ctx.fillText('TEMP', xTemp, cy + 12);
+  ctx.font = 'bold ' + sw(11) + 'px SF Mono, Consolas, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(st.temp.toFixed(0) + '\u00B0F', thX + thW + sw(6), thY + thH - mercuryH + sw(4));
+  ctx.fillStyle = '#2ecc71';
+  ctx.font = sw(9) + 'px SF Mono, Consolas, monospace';
+  ctx.fillText(st.setpoint.toFixed(0) + '\u00B0', thX + thW + sw(6), spTickY + sw(3));
 
-  // Feedback loop (bottom)
-  var fbY = cy + 60;
+  // Lid Open overlay
+  if (pid.lidOpen) {
+    ctx.fillStyle = 'rgba(200, 0, 0, 0.15)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(200, 0, 0, 0.7)';
+    var lbW = sw(100), lbH = sw(24);
+    ctx.beginPath();
+    ctx.roundRect((W - lbW) / 2, sy(30), lbW, lbH, sw(4));
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + sw(13) + 'px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('LID OPEN', W / 2, sy(30) + lbH / 2 + sw(4));
+  }
+
+  // Reignite badge
+  var reigniteAttempts = pid.reigniteAttempts || 0;
+  if (reigniteAttempts > 0) {
+    var badgeR = sw(11);
+    var badgeX = W - sw(18), badgeY = sw(18);
+    ctx.fillStyle = '#e74c3c';
+    ctx.beginPath();
+    ctx.arc(badgeX, badgeY, badgeR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + sw(10) + 'px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(reigniteAttempts, badgeX, badgeY);
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  // Labels
+  ctx.fillStyle = '#666';
+  ctx.font = sw(9) + 'px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('HOPPER', sx(40), sy(50));
+  ctx.fillText('FAN', sx(50), sy(240));
+  ctx.fillText('FIREPOT', sx(150), sy(230));
+  ctx.fillText('CHIMNEY', sx(262), sy(55));
+}
+
+// --- PID Spring (P-term: "How far am I from target?") ---
+function drawPidSpring(timestamp) {
+  var s = setupCanvas('pid-spring');
+  if (!s) return;
+  var ctx = s.ctx, W = s.W, H = s.H;
+  var pid = pidLastData;
+  var pVal = parseFloat(pid.p) || 0;
+  var err = parseFloat(pid.error) || 0;
+
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W, H);
+
+  var cy = H * 0.42;
+  var margin = 20;
+  var anchorR = Math.min(8, W * 0.05);
+
+  // Error maps to spring stretch
+  var errClamped = Math.max(-30, Math.min(30, err));
+  var errNorm = errClamped / 30;
+  var targetX = W - margin - 10;
+  var nowX = margin + 10 + errNorm * (W * 0.15);
+
+  var errAbs = Math.abs(errNorm);
+  var coils = 6 + (1 - errAbs) * 6;
+  var amplitude = 4 + errAbs * (H * 0.18);
+  var segments = 80;
+
+  var springColor = errAbs < 0.15 ? '#2ecc71' : errAbs < 0.5 ? '#ff6b35' : '#e74c3c';
+
+  // Draw spring (sine wave between anchors)
+  ctx.strokeStyle = springColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (var i = 0; i <= segments; i++) {
+    var t = i / segments;
+    var x = nowX + (targetX - nowX) * t;
+    var y = cy + Math.sin(t * coils * Math.PI * 2) * amplitude;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // NOW anchor (orange)
+  ctx.fillStyle = '#ff6b35';
+  ctx.beginPath();
+  ctx.arc(nowX, cy, anchorR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 9px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('NOW', nowX, cy - anchorR - 4);
+  ctx.fillStyle = '#ff6b35';
+  ctx.font = '10px SF Mono, Consolas, monospace';
+  ctx.fillText(pidSceneState.temp.toFixed(0) + '\u00B0', nowX, cy + anchorR + 13);
+
+  // TARGET anchor (green)
+  ctx.fillStyle = '#2ecc71';
+  ctx.beginPath();
+  ctx.arc(targetX, cy, anchorR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 9px -apple-system, sans-serif';
+  ctx.fillText('TARGET', targetX, cy - anchorR - 4);
+  ctx.fillStyle = '#2ecc71';
+  ctx.font = '10px SF Mono, Consolas, monospace';
+  ctx.fillText(pidSceneState.setpoint.toFixed(0) + '\u00B0', targetX, cy + anchorR + 13);
+
+  // Error label in the middle
+  var midX = (nowX + targetX) / 2;
+  ctx.fillStyle = err > 0 ? '#e74c3c' : err < -0.5 ? '#3498db' : '#888';
+  ctx.font = '11px SF Mono, Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(err.toFixed(1) + '\u00B0F error', midX, cy - amplitude - 10);
+
+  // P value
+  ctx.fillStyle = '#3498db';
+  ctx.font = 'bold 12px SF Mono, Consolas, monospace';
+  ctx.fillText('P = ' + pVal.toFixed(3), W / 2, H - 8);
+}
+
+// --- PID Bucket (I-term: "How long have I been off?") ---
+function drawPidBucket(timestamp) {
+  var s = setupCanvas('pid-bucket');
+  if (!s) return;
+  var ctx = s.ctx, W = s.W, H = s.H;
+  var pid = pidLastData;
+  var iVal = parseFloat(pid.i) || 0;
+  var err = parseFloat(pid.error) || 0;
+
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W, H);
+
+  var cx = W / 2;
+  var bucketTop = 18;
+  var bucketBot = H - 28;
+  var bucketH = bucketBot - bucketTop;
+  var topHalfW = W * 0.35;
+  var botHalfW = W * 0.25;
+
+  // Fill level: iTerm roughly -0.5 to +0.5 -> 0..1
+  var fillLevel = Math.max(0, Math.min(1, iVal + 0.5));
+
+  // Bucket outline
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - topHalfW, bucketTop);
+  ctx.lineTo(cx - botHalfW, bucketBot);
+  ctx.lineTo(cx + botHalfW, bucketBot);
+  ctx.lineTo(cx + topHalfW, bucketTop);
+  ctx.stroke();
+
+  // Liquid fill (clipped to bucket shape)
+  if (fillLevel > 0.01) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx - topHalfW, bucketTop);
+    ctx.lineTo(cx - botHalfW, bucketBot);
+    ctx.lineTo(cx + botHalfW, bucketBot);
+    ctx.lineTo(cx + topHalfW, bucketTop);
+    ctx.closePath();
+    ctx.clip();
+
+    var fillY = bucketBot - bucketH * fillLevel;
+    ctx.fillStyle = hexAlpha('#2ecc71', 0.5);
+    ctx.beginPath();
+    var waveSegs = 30;
+    for (var wi = 0; wi <= waveSegs; wi++) {
+      var wt = wi / waveSegs;
+      var wx = (cx - topHalfW - 10) + (topHalfW * 2 + 20) * wt;
+      var wy = fillY + Math.sin(wt * Math.PI * 4 + timestamp / 400) * 2;
+      if (wi === 0) ctx.moveTo(wx, wy); else ctx.lineTo(wx, wy);
+    }
+    ctx.lineTo(cx + topHalfW + 10, bucketBot + 5);
+    ctx.lineTo(cx - topHalfW - 10, bucketBot + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Balanced line at 50%
+  var balY = bucketTop + bucketH * 0.5;
+  var balLeftW = botHalfW + (topHalfW - botHalfW) * 0.5;
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(cx - balLeftW, balY);
+  ctx.lineTo(cx + balLeftW, balY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#888';
+  ctx.font = '8px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('balanced', cx - balLeftW - 3, balY + 3);
+
+  // Dripping drops when error is nonzero
+  if (Math.abs(err) > 0.5) {
+    var dropPhase = (timestamp / 600) % 1;
+    var dropX = cx + (Math.sin(timestamp / 700) * W * 0.08);
+    var dropY = 5 + dropPhase * (bucketTop + 5);
+    ctx.fillStyle = hexAlpha('#2ecc71', 0.6 * (1 - dropPhase));
+    ctx.beginPath();
+    ctx.arc(dropX, dropY, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Warning glow when very full
+  if (fillLevel > 0.8) {
+    ctx.strokeStyle = hexAlpha('#e74c3c', 0.3 + 0.15 * Math.sin(timestamp / 300));
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx - topHalfW, bucketTop);
+    ctx.lineTo(cx - botHalfW, bucketBot);
+    ctx.lineTo(cx + botHalfW, bucketBot);
+    ctx.lineTo(cx + topHalfW, bucketTop);
+    ctx.stroke();
+  }
+
+  // I value
+  ctx.fillStyle = '#2ecc71';
+  ctx.font = 'bold 12px SF Mono, Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('I = ' + iVal.toFixed(3), cx, H - 6);
+}
+
+// --- PID Speedometer (D-term: "How fast am I changing?") ---
+function drawPidSpeedo(timestamp) {
+  var s = setupCanvas('pid-speedo');
+  if (!s) return;
+  var ctx = s.ctx, W = s.W, H = s.H;
+  var pid = pidLastData;
+  var dVal = parseFloat(pid.d) || 0;
+
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W, H);
+
+  var cx = W / 2;
+  var cy = H * 0.55;
+  var r = Math.min(W, H) * 0.36;
+
+  // D-term ranges roughly -0.5 to +0.5 -> angle PI(left) to 0(right)
+  var dClamped = Math.max(-0.5, Math.min(0.5, dVal));
+  var targetAngle = Math.PI * (0.5 - dClamped);
+  displayNeedleAngle += (targetAngle - displayNeedleAngle) * 0.1;
+
+  // Three color zones
+  var zoneAngles = [Math.PI, Math.PI * 0.67, Math.PI * 0.33, 0];
+  var zoneColors = ['#3498db', '#2ecc71', '#ff6b35'];
+
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'butt';
+  for (var zi = 0; zi < 3; zi++) {
+    ctx.strokeStyle = hexAlpha(zoneColors[zi], 0.35);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, zoneAngles[zi], zoneAngles[zi + 1], true);
+    ctx.stroke();
+  }
+
+  // Tick marks
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = '#555';
+  for (var ti = 0; ti <= 10; ti++) {
+    var ta = Math.PI - (ti / 10) * Math.PI;
+    var t1 = r - 5, t2 = r + 5;
+    ctx.beginPath();
+    ctx.moveTo(cx + t1 * Math.cos(ta), cy + t1 * Math.sin(ta));
+    ctx.lineTo(cx + t2 * Math.cos(ta), cy + t2 * Math.sin(ta));
+    ctx.stroke();
+  }
+
+  // Zone labels
+  ctx.font = '8px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#3498db';
+  ctx.fillText('COOLING', cx - r * 0.7, cy + r * 0.4);
+  ctx.fillStyle = '#2ecc71';
+  ctx.fillText('STABLE', cx, cy - r * 0.15);
+  ctx.fillStyle = '#ff6b35';
+  ctx.fillText('HEATING', cx + r * 0.7, cy + r * 0.4);
+
+  // Needle
+  var needleLen = r - 10;
+  var needleAngle = displayNeedleAngle;
+  var needleNorm = needleAngle / Math.PI;
+  var needleColor = needleNorm > 0.67 ? '#3498db' : needleNorm > 0.33 ? '#2ecc71' : '#ff6b35';
+  ctx.strokeStyle = needleColor;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + needleLen * Math.cos(needleAngle), cy - needleLen * Math.sin(needleAngle));
+  ctx.stroke();
+
+  // Center pivot
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // D value
+  ctx.fillStyle = '#ff6b35';
+  ctx.font = 'bold 12px SF Mono, Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('D = ' + dVal.toFixed(3), cx, H - 6);
+}
+
+// --- Feedback Loop Renderer ---
+function drawFeedbackLoop(timestamp) {
+  var s = setupCanvas('feedback-loop');
+  if (!s) return;
+  var ctx = s.ctx, W = s.W, H = s.H;
+  var pid = pidLastData;
+  var out = parseFloat(pid.output) || 0;
+  var err = parseFloat(pid.error) || 0;
+  var temp = pidSceneState.temp;
+  var setpoint = pidSceneState.setpoint;
+
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W, H);
+
+  var nodeCount = 6;
+  var nodeR = Math.min(16, W * 0.035);
+  var topY = H * 0.5;
+  var margin = Math.max(24, W * 0.05);
+  var spacing = (W - margin * 2) / (nodeCount - 1);
+
+  var nodes = [
+    { label: 'TARGET', value: setpoint.toFixed(0) + '\u00B0', color: '#2ecc71' },
+    { label: 'ERROR', value: err.toFixed(1) + '\u00B0', color: err > 0 ? '#e74c3c' : '#3498db' },
+    { label: 'PID', value: '', color: '#3498db' },
+    { label: 'OUTPUT', value: out.toFixed(0) + '%', color: '#fff' },
+    { label: 'SMOKER', value: '', color: '#ff6b35' },
+    { label: 'TEMP', value: temp.toFixed(0) + '\u00B0', color: '#ff6b35' }
+  ];
+
+  var icons = ['\u2316', '\u00B1', 'PID', '%', '\u2248', '\u00B0'];
+  var animPhase = (timestamp / 1500) % 1;
+
+  // Arrows and flow dots between nodes
+  for (var ni = 0; ni < nodeCount - 1; ni++) {
+    var x1 = margin + ni * spacing + nodeR + 2;
+    var x2 = margin + (ni + 1) * spacing - nodeR - 2;
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, topY);
+    ctx.lineTo(x2, topY);
+    ctx.stroke();
+    ctx.fillStyle = '#444';
+    ctx.beginPath();
+    ctx.moveTo(x2, topY);
+    ctx.lineTo(x2 - 5, topY - 3);
+    ctx.lineTo(x2 - 5, topY + 3);
+    ctx.closePath();
+    ctx.fill();
+    for (var di = 0; di < 2; di++) {
+      var dt = ((animPhase + di * 0.5) % 1);
+      var dx = x1 + (x2 - x1) * dt;
+      ctx.globalAlpha = 0.3 + 0.5 * Math.sin(dt * Math.PI);
+      ctx.fillStyle = nodes[ni].color;
+      ctx.beginPath();
+      ctx.arc(dx, topY, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Feedback arrow (Temp back to Error)
+  var fbX1 = margin + 5 * spacing;
+  var fbX2 = margin + 1 * spacing;
+  var fbY = topY + nodeR + 16;
   ctx.strokeStyle = '#555';
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 3]);
   ctx.beginPath();
-  ctx.moveTo(xTemp, cy + 8);
-  ctx.lineTo(xTemp, fbY);
-  ctx.lineTo(xSum, fbY);
-  ctx.lineTo(xSum, cy + sumR);
+  ctx.moveTo(fbX1, topY + nodeR);
+  ctx.lineTo(fbX1, fbY);
+  ctx.lineTo(fbX2, fbY);
+  ctx.lineTo(fbX2, topY + nodeR);
   ctx.stroke();
   ctx.setLineDash([]);
-  // Feedback label
   ctx.fillStyle = '#555';
-  ctx.font = '9px -apple-system, sans-serif';
+  ctx.beginPath();
+  ctx.moveTo(fbX2, topY + nodeR);
+  ctx.lineTo(fbX2 - 3, topY + nodeR + 5);
+  ctx.lineTo(fbX2 + 3, topY + nodeR + 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#555';
+  ctx.font = '8px -apple-system, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('feedback', (xTemp + xSum) / 2, fbY - 4);
-  // Negative sign at feedback entry
-  ctx.fillStyle = '#e74c3c';
-  ctx.font = 'bold 10px sans-serif';
-  ctx.fillText('\u2013', xSum + 8, cy + sumR + 4);
+  ctx.fillText('measurement', (fbX1 + fbX2) / 2, fbY - 2);
+
+  // Draw node circles
+  for (var ni = 0; ni < nodeCount; ni++) {
+    var nx = margin + ni * spacing;
+    var node = nodes[ni];
+    ctx.fillStyle = hexAlpha(node.color, 0.12);
+    ctx.strokeStyle = node.color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(nx, topY, nodeR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = node.color;
+    ctx.font = 'bold ' + Math.min(10, nodeR * 0.7) + 'px SF Mono, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(icons[ni], nx, topY);
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#666';
+    ctx.font = '7px -apple-system, sans-serif';
+    ctx.fillText(node.label, nx, topY - nodeR - 3);
+    if (node.value) {
+      ctx.fillStyle = node.color;
+      ctx.font = 'bold 9px SF Mono, Consolas, monospace';
+      ctx.fillText(node.value, nx, topY + nodeR + 12);
+    }
+  }
+
+  // Speech bubble annotation
+  var msg = '';
+  var errAbs = Math.abs(err);
+  if (pid.lidOpen) msg = 'Lid open! Holding steady...';
+  else if ((pid.reigniteAttempts || 0) > 0) msg = 'Relighting the fire...';
+  else if (out >= 99) msg = 'Maximum heat!';
+  else if (out <= 16 && errAbs < 3) msg = 'Minimal fuel \u2014 coasting';
+  else if (errAbs > 10) msg = errAbs.toFixed(0) + '\u00B0F off \u2014 compensating!';
+  else if (errAbs < 2) msg = 'Right on target';
+  else msg = 'Adjusting \u2014 ' + err.toFixed(1) + '\u00B0F error';
+
+  if (msg) {
+    ctx.font = '10px -apple-system, sans-serif';
+    var tw = ctx.measureText(msg).width;
+    var bubW = tw + 16, bubH = 18;
+    var bubX = (W - bubW) / 2, bubY = 2;
+    ctx.fillStyle = 'rgba(30,30,30,0.85)';
+    ctx.beginPath();
+    ctx.roundRect(bubX, bubY, bubW, bubH, 4);
+    ctx.fill();
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.roundRect(bubX, bubY, bubW, bubH, 4);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(30,30,30,0.85)';
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - 4, bubY + bubH);
+    ctx.lineTo(W / 2, bubY + bubH + 4);
+    ctx.lineTo(W / 2 + 4, bubY + bubH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ccc';
+    ctx.textAlign = 'center';
+    ctx.fillText(msg, W / 2, bubY + bubH / 2 + 3.5);
+  }
 }
 
-// --- PID Terms Breakdown Bar ---
-function drawPidTermsBar() {
-  var canvas = document.getElementById('pid-terms-bar');
-  if (!canvas) return;
-  var dpr = window.devicePixelRatio || 1;
-  var rect = canvas.getBoundingClientRect();
-  var W = rect.width, H = rect.height;
-  if (W === 0 || H === 0) return;
-  canvas.width = W * dpr;
-  canvas.height = H * dpr;
-  var ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-
-  ctx.fillStyle = '#111';
-  ctx.fillRect(0, 0, W, H);
-
-  var pid = pidLastData;
-  var p = parseFloat(pid.p) || 0;
-  var i = parseFloat(pid.i) || 0;
-  var d = parseFloat(pid.d) || 0;
-  var out = parseFloat(pid.output) || 0;
-
-  var barH = 18;
-  var barY = (H - barH) / 2;
-  var barMargin = 8;
-  var barW = W - barMargin * 2;
-
-  // Background bar (0-100% scale)
-  ctx.fillStyle = '#1a1a1a';
-  ctx.beginPath();
-  ctx.roundRect(barMargin, barY, barW, barH, 4);
-  ctx.fill();
-
-  // The PID output is the sum: output = (P + I + D + 0.5) * 100, clamped 15-100
-  // Show each term as a proportion of the total
-  // P, I, D can be negative. Map them relative to the output bar.
-  // Simpler approach: show output as filled bar with colored segments
-  var fillW = (out / 100) * barW;
-
-  // Proportions of P, I, D relative to their absolute sum
-  var absSum = Math.abs(p) + Math.abs(i) + Math.abs(d) + 0.001;
-  var pFrac = Math.abs(p) / absSum;
-  var iFrac = Math.abs(i) / absSum;
-  var dFrac = 1 - pFrac - iFrac;
-
-  var x = barMargin;
-  var pW = fillW * pFrac;
-  var iW = fillW * iFrac;
-  var dW = fillW * dFrac;
-
-  // Draw segments with rounded ends
-  ctx.save();
-  ctx.beginPath();
-  ctx.roundRect(barMargin, barY, barW, barH, 4);
-  ctx.clip();
-
-  ctx.fillStyle = '#3498db';
-  ctx.fillRect(x, barY, pW, barH);
-  x += pW;
-  ctx.fillStyle = '#2ecc71';
-  ctx.fillRect(x, barY, iW, barH);
-  x += iW;
-  ctx.fillStyle = '#ff6b35';
-  ctx.fillRect(x, barY, dW, barH);
-  ctx.restore();
-
-  // Center line at 50% (the PID centering offset)
-  var cx = barMargin + barW * 0.5;
-  ctx.strokeStyle = '#fff';
-  ctx.globalAlpha = 0.3;
-  ctx.lineWidth = 1;
-  ctx.setLineDash([2, 2]);
-  ctx.beginPath();
-  ctx.moveTo(cx, barY - 2);
-  ctx.lineTo(cx, barY + barH + 2);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.globalAlpha = 1;
-
-  // Output percentage text
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 10px SF Mono, Consolas, monospace';
-  ctx.textAlign = 'right';
-  ctx.fillText(out.toFixed(1) + '%', barMargin + fillW - 4, barY + barH/2 + 3.5);
-}
-
-// --- Auger Duty Cycle Gauge ---
-function drawAugerGauge() {
-  var canvas = document.getElementById('pid-auger-gauge');
-  if (!canvas) return;
-  var dpr = window.devicePixelRatio || 1;
-  var rect = canvas.getBoundingClientRect();
-  var W = rect.width, H = rect.height;
-  if (W === 0 || H === 0) return;
-  canvas.width = W * dpr;
-  canvas.height = H * dpr;
-  var ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-
-  ctx.fillStyle = '#111';
-  ctx.fillRect(0, 0, W, H);
-
-  var pid = pidLastData;
-  var out = parseFloat(pid.output) || 0;
-  var cycleRemaining = parseInt(pid.cycleRemaining) || 0;
-  var augerOn = pid.augerOn;
-
-  var cx = W / 2;
-  var cy = H / 2;
-  var r = Math.min(W, H) / 2 - 12;
-
-  // Background ring
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.strokeStyle = '#222';
-  ctx.lineWidth = 10;
-  ctx.stroke();
-
-  // Fill arc (duty cycle percentage)
-  var fillAngle = (out / 100) * Math.PI * 2;
-  var startAngle = -Math.PI / 2;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, startAngle, startAngle + fillAngle);
-  ctx.strokeStyle = augerOn ? '#2ecc71' : '#ff6b35';
-  ctx.lineWidth = 10;
-  ctx.lineCap = 'round';
-  ctx.stroke();
-
-  // Cycle progress tick (shows where in the 20s cycle we are)
-  var cycleTotal = 20000; // 20 seconds
-  var cycleElapsed = cycleTotal - cycleRemaining;
-  var tickAngle = startAngle + (cycleElapsed / cycleTotal) * Math.PI * 2;
-  var tickR = r + 8;
-  ctx.beginPath();
-  ctx.arc(cx + tickR * Math.cos(tickAngle), cy + tickR * Math.sin(tickAngle), 3, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff';
-  ctx.fill();
-
-  // Center text
-  ctx.fillStyle = augerOn ? '#2ecc71' : '#ff6b35';
-  ctx.font = 'bold 22px SF Mono, Consolas, monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(out.toFixed(0) + '%', cx, cy - 6);
-
-  ctx.fillStyle = '#666';
-  ctx.font = '10px -apple-system, sans-serif';
-  ctx.fillText(augerOn ? 'AUGER ON' : 'AUGER OFF', cx, cy + 14);
-  ctx.textBaseline = 'alphabetic';
+// --- Bridge: update scene state from main status poll ---
+function updatePidVisuals(s) {
+  if (!s.pid) return;
+  var pid = s.pid;
+  pidSceneState.fan = s.fan;
+  pidSceneState.auger = s.auger;
+  pidSceneState.igniter = !!s.igniter;
+  pidSceneState.temp = s.temp;
+  pidSceneState.setpoint = s.setpoint;
+  pidSceneState.output = parseFloat(pid.output) || 0;
+  drawPidChart();
 }
 
 // --- PID History Time-Series Chart ---
