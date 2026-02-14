@@ -243,7 +243,12 @@ float MAX31865::readTemperatureC(void) {
 
 uint16_t MAX31865::readRawRTD(void) {
   uint16_t raw = readRegister16(MAX31865_RTD_MSB);
-  return raw >> 1; // Fault bit is LSB
+  if (raw & 0x01) {
+    // Fault bit is set in RTD register — reading is unreliable
+    DUAL_LOGF(LOG_WARNING, "[MAX31865] RTD fault bit set (raw=0x%04X)\n", raw);
+    return 0; // Triggers error path in caller
+  }
+  return raw >> 1;
 }
 
 uint8_t MAX31865::getFaultStatus(void) {
@@ -270,23 +275,17 @@ void MAX31865::oneShot(void) {
 }
 
 float MAX31865::rtdResistanceToTemperature(float resistance) {
-  // Callendar-Van Dusen equation (simplified for positive temperatures)
-  // Solving for temperature given resistance
+  // Callendar-Van Dusen equation: R = R0 * (1 + A*T + B*T^2)
+  // Rearranging: B*T^2 + A*T + (1 - R/R0) = 0
+  // Quadratic formula gives two roots; the physical root uses (-A + sqrt(...))
+  // This works correctly for both positive and negative temperatures.
   const float A = 3.9083e-3;
   const float B = -5.775e-7;
 
-  float tempC;
-  if (resistance < _rtdResistance) {
-    // Quadratic formula for negative temperatures
-    float a = -A / (2 * B);
-    float b = 1 + A / B * (1 - _rtdResistance / resistance);
-    tempC = a + sqrt(a * a + b);
-  } else {
-    // For positive temps (simplification)
-    tempC = (resistance - _rtdResistance) / (_rtdResistance * A);
-  }
-
-  return tempC;
+  float Rratio = 1.0 - resistance / _rtdResistance;
+  float discriminant = A * A - 4.0 * B * Rratio;
+  if (discriminant < 0) return -999.0;
+  return (-A + sqrt(discriminant)) / (2.0 * B);
 }
 
 float MAX31865::resistanceToTemperatureC(float resistance) {

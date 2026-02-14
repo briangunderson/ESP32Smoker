@@ -537,7 +537,7 @@ bool TemperatureController::readTemperature() {
 
   float tempC = _tempSensor->readTemperatureC();
 
-  if (tempC < -100) { // Error value from sensor
+  if (tempC < -100 || tempC > 400) { // Error value or physically impossible reading
     return false;
   }
 
@@ -907,7 +907,8 @@ void TemperatureController::recordHistorySample() {
 
   HistorySample& s = _history[_historyHead];
   s.time = now / 1000;
-  s.temp = (int16_t)(_currentTemp * 10.0f);
+  float clampedTemp = constrain(_currentTemp, -3276.0f, 3276.0f);
+  s.temp = (int16_t)(clampedTemp * 10.0f);
   s.setpoint = (int16_t)(_setpoint * 10.0f);
   s.state = (uint8_t)_state;
 
