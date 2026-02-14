@@ -1,0 +1,10 @@
+{
+    "name": "test_mocks",
+    "version": "1.0.0",
+    "description": "Arduino mock implementations for native unit testing",
+    "build": {
+        "flags": [
+            "-I../../../include"
+        ]
+    }
+}

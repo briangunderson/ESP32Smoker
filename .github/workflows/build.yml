@@ -38,6 +38,9 @@ jobs:
           #endif // SECRETS_H
           SECRETS_EOF
 
+      - name: Run native unit tests
+        run: pio test -e native --verbose
+
       - name: Build firmware
         run: pio run -e feather_esp32s3
         env:
