@@ -626,48 +626,78 @@ The infrastructure is designed to be modular and reusable for other ESP32 projec
 - `logging/elasticsearch/` - All ES configs (templates, pipelines, watchers)
 - `logging/kibana/` - All Kibana configs (visualizations, dashboard)
 
-## PID Visualization Page (v1.4.0)
+## PID Visualization Page (v1.4.0 → Educational Overhaul)
 
-The web UI includes a dedicated PID Visualizer tab with real-time animated diagrams powered by live PID data from `/api/status`. All rendering is Canvas-based with DPR awareness. History is kept in browser-side JS ring buffer (300 samples, ~10 min at 2s polling) — zero firmware memory cost.
+The web UI includes a dedicated PID Visualizer tab with an **educational animated visualization** that teaches anyone what PID control is and how it works, using the actual smoker as the visual metaphor. All rendering is Canvas-based with DPR awareness. Powered by live PID data from `/api/status` via existing `pidLastData`. History is kept in browser-side JS ring buffer (300 samples, ~10 min at 2s polling) — zero firmware memory cost.
 
-### Components
+### Architecture
 
-1. **Animated PID Block Diagram** (top)
-   - Classic control theory layout: Setpoint → Σ → Error → [P][I][D] → Σ → Output → [Smoker] → Temp → feedback
-   - Animated flow dots showing signal direction
-   - Live values at each node (error, P/I/D terms, output %)
-   - Color-coded: green (stable), orange (correcting), red (saturated)
+- **Animation loop**: Single `requestAnimationFrame` loop (`pidAnimLoop`), throttled to ~18 FPS via `PID_FRAME_MS`
+- **Only runs when PID tab is active** — `startPidAnim()`/`stopPidAnim()` called on tab switch
+- **Particle system**: Pre-allocated pool of 100 particles (60 fire + 40 smoke), zero GC during animation
+- **Data flow**: `/api/status` polled every 2s → `updatePidVisuals(s)` bridge function → `pidSceneState` object → animation loop reads each frame
+- **DPR-aware**: All canvases use `setupCanvas(id)` helper for crisp rendering on HiDPI displays
 
-2. **PID Terms Breakdown** (middle-left)
-   - Stacked horizontal bar: P (blue) + I (green) + D (orange) = Output (white)
-   - Shows 0.5 centering offset visually
-   - Numeric values update in real-time
+### Components (Top to Bottom)
 
-3. **Auger Duty Cycle Gauge** (middle-right)
-   - Circular arc gauge showing PID output as duty cycle percentage
-   - Animated cycle position tick (20s cycle)
-   - Shows auger ON/OFF state and cycle time remaining
+1. **Animated Smoker Cross-Section** (`#smoker-scene`, 280px canvas)
+   - Cross-section cutaway showing physical smoker internals, all animated with live data
+   - **Hopper** with seeded-random pellet particles
+   - **Auger tube** with rotating sine-wave screw (animates when auger ON)
+   - **Firepot** with particle-system fire (spawn rate proportional to PID output %)
+   - **Cooking chamber** with deflector plate, grates, food silhouettes
+   - **Chimney** with particle-system smoke (constant drift, expand as they rise)
+   - **Fan** with 3 rotating blades + animated air flow dashes (animates when fan ON)
+   - **Thermometer** showing current temp vs setpoint tick mark (mercury fill, color-coded)
+   - **Lid-Open overlay** with red semi-transparent glow when detected
+   - **Reignite badge** when attempts > 0
 
-4. **Status Indicators** (middle)
-   - Lid Open indicator (red glow animation when active)
-   - Reignite Attempts counter
-   - PID Saturated warning
+2. **PID Brain — Three Visual Metaphors** (3 side-by-side canvases, 140px each)
+   Each explains one PID component visually with plain-English labels:
+   - **P = Spring** (`#pid-spring`): Elastic band between "NOW" temp and "TARGET" — stretches with error magnitude. Color shifts green→orange→red with increasing error.
+   - **I = Bucket** (`#pid-bucket`): Trapezoidal container filling with accumulated error drops. Animated wave surface, dripping drops when error nonzero. Warning glow when >80% full. Dashed "balanced" line at 50%.
+   - **D = Speedometer** (`#pid-speedo`): Half-circle gauge with 3 color zones (COOLING/STABLE/HEATING). Smoothed needle with derivative-proportional deflection. Displays D value and rate label.
 
-5. **PID Time-Series Chart** (bottom)
-   - 4 overlaid lines: P (blue), I (green), D (orange), Output (white)
+3. **Feedback Loop Band** (`#feedback-loop`, 90px canvas)
+   - Horizontal flow: TARGET → ERROR → PID → OUTPUT → SMOKER → TEMP → (feedback arrow back)
+   - Animated flow dots along arrows
+   - Live values at each node
+   - **Speech bubble** with context-aware plain-English annotations (e.g., "5°F below target — adding fuel!", "Right on target — cruising!", "Lid open! Holding steady...")
+   - Dashed feedback arrow from TEMP back to ERROR node
+
+4. **PID Time-Series Chart** (`#pid-history-chart`, RETAINED from previous version)
+   - 5 overlaid lines: P (blue), I (green), D (orange), Output (white), Temp (red)
    - Auto-scrolling time axis
    - Range buttons: 2m / 5m / 10m
    - Canvas-based with DPR awareness
 
+### Key JS Functions (script.js)
+| Function | Lines | Purpose |
+|----------|-------|---------|
+| `initParticles()` | ~651 | Creates pre-allocated pool of 100 inactive particles |
+| `spawnFireParticle(x,y)` | ~658 | Spawns fire particle in slots 0-59 |
+| `spawnSmokeParticle(x,y)` | ~677 | Spawns smoke particle in slots 60-99 |
+| `updateParticles(dt)` | ~696 | Physics: fire shrinks/rises, smoke expands/drifts |
+| `pidAnimLoop(ts)` | ~723 | Main rAF loop, throttled ~18 FPS, calls all draw functions |
+| `startPidAnim()`/`stopPidAnim()` | ~739/746 | Lifecycle control (tab switch) |
+| `setupCanvas(id)` | ~752 | DPR-aware canvas sizing helper |
+| `drawSmokerScene(ts)` | ~767 | Full smoker cross-section (~284 lines) |
+| `drawPidSpring(ts)` | ~1054 | P-term spring metaphor |
+| `drawPidBucket(ts)` | ~1133 | I-term bucket metaphor with wave animation |
+| `drawPidSpeedo(ts)` | ~1239 | D-term speedometer gauge |
+| `drawFeedbackLoop(ts)` | ~1319 | Feedback loop with speech bubbles |
+| `updatePidVisuals(s)` | ~1471 | Bridge: status poll → pidSceneState + drawPidChart() |
+
 ### Tab System
 - Tab bar with "Dashboard" and "PID Visualizer" buttons
 - Only active tab's content is visible (`display: none` toggling)
-- PID canvases only render when PID tab is active (saves CPU)
+- `startPidAnim()` called when switching TO PID tab; `stopPidAnim()` when switching AWAY
 - Window resize re-draws active tab's canvases
+- Mobile responsive: brain canvases stack vertically at <480px
 
 ### Home Assistant PID Analysis View
 The HA GunderGrill dashboard includes a "PID Analysis" view (4th view) with:
-- Iframe embedding the ESP32's PID Visualizer tab (for animated block diagram)
+- Iframe embedding the ESP32's PID Visualizer tab (for animated smoker scene)
 - ApexCharts: PID output composition over 1 hour (P, I, D, output lines)
 - ApexCharts: Temperature vs setpoint with error tracking
 - Mushroom cards: Lid open status, reignite attempts, PID output gauge
