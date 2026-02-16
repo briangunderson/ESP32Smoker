@@ -178,51 +178,28 @@
         </main>
 
         <div id="tab-pid" class="tab-panel" style="display:none;">
-            <!-- PID Block Diagram -->
-            <section class="card pid-diagram-card">
-                <h3>PID Control Flow</h3>
-                <canvas id="pid-block-diagram"></canvas>
+            <!-- Animated Smoker Cross-Section -->
+            <section class="card pid-scene-card">
+                <h3>Smoker Cross-Section</h3>
+                <canvas id="smoker-scene"></canvas>
             </section>
 
-            <!-- PID Terms Breakdown + Auger Duty Cycle -->
-            <div class="pid-mid-row">
-                <section class="card pid-terms-card">
-                    <h3>PID Terms</h3>
-                    <canvas id="pid-terms-bar"></canvas>
-                    <div class="pid-values-grid">
-                        <div class="pid-val"><span class="pid-label">P</span><span id="pv-p" class="pid-num">--</span></div>
-                        <div class="pid-val"><span class="pid-label">I</span><span id="pv-i" class="pid-num">--</span></div>
-                        <div class="pid-val"><span class="pid-label">D</span><span id="pv-d" class="pid-num">--</span></div>
-                        <div class="pid-val"><span class="pid-label">Out</span><span id="pv-out" class="pid-num">--</span></div>
-                    </div>
+            <!-- PID Brain: Three Visual Metaphors -->
+            <div class="pid-brain-row">
+                <section class="card pid-brain-card">
+                    <canvas id="pid-spring"></canvas>
                 </section>
-                <section class="card pid-auger-card">
-                    <h3>Auger Cycle</h3>
-                    <canvas id="pid-auger-gauge"></canvas>
-                    <div class="auger-stats">
-                        <div><span class="pid-label">Duty</span><span id="pv-duty">--%</span></div>
-                        <div><span class="pid-label">Cycle</span><span id="pv-cycle">--s</span></div>
-                    </div>
+                <section class="card pid-brain-card">
+                    <canvas id="pid-bucket"></canvas>
+                </section>
+                <section class="card pid-brain-card">
+                    <canvas id="pid-speedo"></canvas>
                 </section>
             </div>
 
-            <!-- Status Indicators -->
-            <section class="card pid-status-card">
-                <div class="pid-status-row">
-                    <div class="pid-indicator" id="pid-ind-lid">
-                        <span class="ind-dot"></span>
-                        <span>Lid</span>
-                    </div>
-                    <div class="pid-indicator" id="pid-ind-reignite">
-                        <span class="ind-dot"></span>
-                        <span>Reignite</span>
-                        <span id="pv-reignite" class="ind-count">0</span>
-                    </div>
-                    <div class="pid-indicator" id="pid-ind-saturated">
-                        <span class="ind-dot"></span>
-                        <span>Saturated</span>
-                    </div>
-                </div>
+            <!-- Feedback Loop Band -->
+            <section class="card pid-feedback-card">
+                <canvas id="feedback-loop"></canvas>
             </section>
 
             <!-- PID Time Series Chart -->
