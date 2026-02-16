@@ -37,6 +37,7 @@ jobs:
           #define MQTT_PASSWORD       "${{ secrets.MQTT_PASSWORD }}"
           #define OTA_PASSWORD        "${{ secrets.OTA_PASSWORD }}"
           #define SYSLOG_SERVER       "${{ secrets.SYSLOG_SERVER }}"
+          #define GITHUB_PAT          "${{ secrets.GH_RELEASE_PAT }}"
           #endif // SECRETS_H
           SECRETS_EOF
 
