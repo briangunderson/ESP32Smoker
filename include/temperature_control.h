@@ -105,6 +105,15 @@ public:
   };
   PIDStatus getPIDStatus(void);
 
+  // Pitmaster Score
+  struct PitmasterScore {
+    float score;           // 0-100
+    const char* title;     // e.g., "BBQ Legend"
+    uint32_t streakSeconds; // consecutive seconds within 2°F
+    uint8_t lidOpens;      // total lid-open events this session
+  };
+  PitmasterScore getPitmasterScore(void);
+
   // Reignite status
   uint8_t getReigniteAttempts(void) { return _reigniteAttempts; }
   uint8_t getReignitePhase(void) { return _reignitePhase; }
@@ -172,8 +181,15 @@ private:
 
   // Lid-open detection
   bool _lidOpen;                 // current lid state
+  bool _prevLidOpen;             // previous lid state (for edge detection)
   uint32_t _lidOpenTime;         // millis when lid was detected open
   uint32_t _lidStableTime;       // millis when temp rate stabilized after lid-open
+
+  // Pitmaster Score
+  float _pitmasterScore;           // current score (0-100)
+  uint32_t _precisionStreakStart;  // millis when streak began (0 = no streak)
+  uint8_t _lidOpenCount;           // total lid opens this session
+  uint8_t _lastScoredReignite;     // last reignite count that was penalized
 
   // Calculated PID gains (from Proportional Band parameters)
   float _Kp;

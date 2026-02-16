@@ -16,7 +16,9 @@ TemperatureController::TemperatureController(MAX31865* tempSensor,
       _eventHead(0), _eventCount(0),
       _reigniteAttempts(0), _reignitePhase(0), _reignitePhaseStart(0),
       _pidMaxedSince(0),
-      _lidOpen(false), _lidOpenTime(0), _lidStableTime(0) {
+      _lidOpen(false), _prevLidOpen(false), _lidOpenTime(0), _lidStableTime(0),
+      _pitmasterScore(PITMASTER_SCORE_INITIAL), _precisionStreakStart(0),
+      _lidOpenCount(0), _lastScoredReignite(0) {
 
   // Calculate PID gains from Proportional Band parameters (PiSmoker method)
   _Kp = -1.0 / PID_PROPORTIONAL_BAND;              // = -0.0167
@@ -155,6 +157,13 @@ void TemperatureController::startSmoking(float targetTemp) {
   _reigniteAttempts = 0;
   _pidMaxedSince = 0;
   _lidOpen = false;
+  _prevLidOpen = false;
+
+  // Reset pitmaster score for new session
+  _pitmasterScore = PITMASTER_SCORE_INITIAL;
+  _precisionStreakStart = 0;
+  _lidOpenCount = 0;
+  _lastScoredReignite = 0;
 
   if (ENABLE_SERIAL_DEBUG) {
     Serial.printf("[TEMP] Starting up - target: %.1f°F\n", _setpoint);
@@ -251,6 +260,23 @@ TemperatureController::PIDStatus TemperatureController::getPIDStatus(void) {
   };
 }
 
+TemperatureController::PitmasterScore TemperatureController::getPitmasterScore(void) {
+  const char* title;
+  if (_pitmasterScore >= 90) title = "BBQ Legend";
+  else if (_pitmasterScore >= 75) title = "Pitmaster";
+  else if (_pitmasterScore >= 60) title = "Smoke Whisperer";
+  else if (_pitmasterScore >= 40) title = "Grill Apprentice";
+  else if (_pitmasterScore >= 20) title = "Weekend Warrior";
+  else title = "Rookie";
+
+  uint32_t streak = 0;
+  if (_precisionStreakStart > 0 && _state == STATE_RUNNING) {
+    streak = (millis() - _precisionStreakStart) / 1000;
+  }
+
+  return { _pitmasterScore, title, streak, _lidOpenCount };
+}
+
 // ============================================================================
 // PRIVATE METHODS
 // ============================================================================
@@ -313,6 +339,47 @@ void TemperatureController::handleRunningState() {
   manageFan();
   manageAuger();
   updatePID();
+
+  // Pitmaster Score update
+  if (ENABLE_PITMASTER_SCORE) {
+    float deviation = abs(_currentTemp - _setpoint);
+    unsigned long now_pm = millis();
+
+    // Precision bonus: within 2°F of setpoint
+    if (deviation <= 2.0) {
+      _pitmasterScore += PITMASTER_PRECISION_BONUS;
+      if (_precisionStreakStart == 0) _precisionStreakStart = now_pm;
+    } else {
+      _precisionStreakStart = 0;
+    }
+
+    // Drift penalty: more than 5°F off
+    if (deviation > 5.0) {
+      _pitmasterScore -= PITMASTER_DRIFT_PENALTY * (deviation - 5.0);
+    }
+
+    // Overshoot penalty: more than 15°F off
+    if (deviation > 15.0) {
+      _pitmasterScore -= PITMASTER_OVERSHOOT_PENALTY * (deviation - 15.0);
+    }
+
+    // Lid-open penalty (edge-triggered: only when lid first opens)
+    if (_lidOpen && !_prevLidOpen) {
+      _pitmasterScore -= PITMASTER_LID_PENALTY;
+      _lidOpenCount++;
+    }
+    _prevLidOpen = _lidOpen;
+
+    // Reignite penalty (only penalize new attempts)
+    if (_reigniteAttempts > _lastScoredReignite) {
+      _pitmasterScore -= PITMASTER_REIGNITE_PENALTY * (_reigniteAttempts - _lastScoredReignite);
+      _lastScoredReignite = _reigniteAttempts;
+    }
+
+    // Clamp score
+    if (_pitmasterScore > PITMASTER_SCORE_MAX) _pitmasterScore = PITMASTER_SCORE_MAX;
+    if (_pitmasterScore < PITMASTER_SCORE_MIN) _pitmasterScore = PITMASTER_SCORE_MIN;
+  }
 
   // Reignite detection: fire may be dead if temp is low and PID is maxed out
   if (ENABLE_REIGNITE && !_lidOpen) {

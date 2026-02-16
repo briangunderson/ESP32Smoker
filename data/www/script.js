@@ -12,6 +12,11 @@ let localAtFetch = 0;    // Date.now() when history was fetched
 let graphInited = false;
 let graphRangeSec = 14400; // 0 = all data
 
+// --- Pitmaster Score State ---
+let wisdomQuote = '';
+let lastWisdomFetch = 0;
+const WISDOM_INTERVAL = 30000; // 30 seconds
+
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
   fetchHistory();
@@ -19,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(updateStatus, POLL_MS);
   window.addEventListener('resize', function() { drawGraph(); if (document.getElementById('tab-pid') && document.getElementById('tab-pid').classList.contains('active')) { drawPidDiagram(); drawPidTermsBar(); drawAugerGauge(); drawPidChart(); } });
   checkVersionStatus();
+  fetchWisdom();
 });
 
 // --- Toast Notifications ---
@@ -151,6 +157,10 @@ function updateUI(s) {
 
   // Append to graph
   appendGraphPoint(s);
+
+  // Pitmaster Score + Wisdom
+  updatePitmasterUI(s);
+  maybeRefreshWisdom();
 }
 
 // --- Temperature Graph ---
@@ -574,6 +584,68 @@ function updateFastOtaBtn(active) {
   if (!btn) return;
   btn.textContent = 'Fast OTA: ' + (active ? 'On' : 'Off');
   if (active) btn.classList.add('active'); else btn.classList.remove('active');
+}
+
+// --- Pitmaster Score ---
+function updatePitmasterUI(s) {
+  var card = document.getElementById('pitmaster-card');
+  if (!card) return;
+  var pm = s.pitmaster;
+  if (!pm) { card.style.display = 'none'; return; }
+
+  var score = parseFloat(pm.score) || 0;
+  var state = s.state || 'Idle';
+  var isActive = (state === 'Running' || state === 'Starting' || state === 'Reignite');
+
+  if (!isActive && score <= 0) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  // Score value
+  document.getElementById('pm-score').textContent = score.toFixed(0);
+
+  // Ring fill (circumference = 2 * PI * 42 = 263.9)
+  var circumference = 263.9;
+  var ring = document.getElementById('pm-ring-fill');
+  ring.style.strokeDashoffset = circumference * (1 - score / 100);
+
+  // Title
+  document.getElementById('pm-title').textContent = pm.title || '--';
+
+  // Streak
+  var streak = pm.streak || 0;
+  var streakText = streak < 60 ? streak + 's' : Math.floor(streak / 60) + 'm ' + (streak % 60) + 's';
+  document.getElementById('pm-streak').textContent = streak > 0 ? streakText : '--';
+
+  // Lid opens
+  document.getElementById('pm-lids').textContent = pm.lidOpens || 0;
+
+  // Color tier
+  var tier = score >= 90 ? 'legendary' : score >= 75 ? 'great' : score >= 60 ? 'good' : score >= 40 ? 'mid' : 'low';
+  var scoreRing = card.querySelector('.pm-score-ring');
+  var scoreText = card.querySelector('.pm-score-text');
+  var info = card.querySelector('.pm-info');
+  ['legendary','great','good','mid','low'].forEach(function(c) {
+    scoreRing.classList.remove(c); scoreText.classList.remove(c); info.classList.remove(c);
+  });
+  scoreRing.classList.add(tier); scoreText.classList.add(tier); info.classList.add(tier);
+}
+
+async function fetchWisdom() {
+  try {
+    var r = await fetch(API + '/wisdom');
+    if (!r.ok) return;
+    var d = await r.json();
+    wisdomQuote = d.quote || '';
+    var el = document.getElementById('pm-wisdom');
+    if (el) el.textContent = wisdomQuote;
+    lastWisdomFetch = Date.now();
+  } catch (e) { /* silent */ }
+}
+
+function maybeRefreshWisdom() {
+  if (Date.now() - lastWisdomFetch >= WISDOM_INTERVAL) {
+    fetchWisdom();
+  }
 }
 
 // --- Tab System ---

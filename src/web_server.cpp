@@ -56,7 +56,7 @@ void WebServer::setupRoutes() {
     auto status = _controller->getStatus();
     auto pid = _controller->getPIDStatus();
 
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<768> doc;
     doc["temp"] = status.currentTemp;
     doc["setpoint"] = status.setpoint;
     doc["state"] = _controller->getStateName();
@@ -79,6 +79,14 @@ void WebServer::setupRoutes() {
     pidObj["augerOn"] = pid.augerCycleState;
     pidObj["lidOpen"] = _controller->isLidOpen();
     pidObj["reigniteAttempts"] = _controller->getReigniteAttempts();
+
+    // Pitmaster Score
+    auto pm = _controller->getPitmasterScore();
+    JsonObject pmObj = doc.createNestedObject("pitmaster");
+    pmObj["score"] = serialized(String(pm.score, 1));
+    pmObj["title"] = pm.title;
+    pmObj["streak"] = pm.streakSeconds;
+    pmObj["lidOpens"] = pm.lidOpens;
 
     String response;
     serializeJson(doc, response);
@@ -157,6 +165,40 @@ void WebServer::setupRoutes() {
     }
     response->print("]}");
     request->send(response);
+  });
+
+  // API: Random BBQ wisdom quote
+  _server.on("/api/wisdom", HTTP_GET, [](AsyncWebServerRequest* request) {
+    static const char* const quotes[] PROGMEM = {
+      "Low and slow is the way to go.",
+      "If you're lookin', you ain't cookin'.",
+      "Good BBQ is worth the wait. Always.",
+      "The best seasoning is patience.",
+      "Fat side up, flavor side everywhere.",
+      "Trust the thermometer, not the clock.",
+      "Real pitmasters don't peek.",
+      "Smoke is just wood giving flavor a ride.",
+      "You can't rush perfection. Or brisket.",
+      "When in doubt, add more wood.",
+      "BBQ: the only cooking where doing nothing is a skill.",
+      "A watched smoker never reaches temp. (Just kidding, it will.)",
+      "Wrap it? Rest it? Both. The answer is always both.",
+      "The stall is not your enemy. It's character building.",
+      "Every great cook starts with a clean firepot.",
+      "Temperature swings build character... in the pitmaster.",
+      "The secret ingredient is always time.",
+      "Keep your friends close and your thermometer closer.",
+      "Smoke ring doesn't affect flavor, but it sure looks cool.",
+      "A clean grill is a happy grill. A dirty grill has more flavor.",
+    };
+    static const uint8_t quoteCount = sizeof(quotes) / sizeof(quotes[0]);
+    uint8_t idx = random(quoteCount);
+    StaticJsonDocument<256> doc;
+    doc["quote"] = quotes[idx];
+    doc["index"] = idx;
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
   });
 
   // Debug API: Enable/disable debug mode

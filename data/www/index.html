@@ -56,6 +56,35 @@
                 </div>
             </section>
 
+            <!-- Pitmaster Score -->
+            <section class="card pitmaster-card" id="pitmaster-card">
+                <div class="pm-row">
+                    <div class="pm-score-ring">
+                        <svg viewBox="0 0 100 100">
+                            <circle class="pm-ring-bg" cx="50" cy="50" r="42" />
+                            <circle class="pm-ring-fill" id="pm-ring-fill" cx="50" cy="50" r="42" />
+                        </svg>
+                        <div class="pm-score-text">
+                            <span id="pm-score">--</span>
+                        </div>
+                    </div>
+                    <div class="pm-info">
+                        <div class="pm-title" id="pm-title">--</div>
+                        <div class="pm-stats">
+                            <div class="pm-stat">
+                                <span class="pm-stat-label">Streak</span>
+                                <span class="pm-stat-value" id="pm-streak">--</span>
+                            </div>
+                            <div class="pm-stat">
+                                <span class="pm-stat-label">Lid Opens</span>
+                                <span class="pm-stat-value" id="pm-lids">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="pm-wisdom" id="pm-wisdom"></div>
+            </section>
+
             <!-- Temperature Graph -->
             <section class="card graph-card">
                 <div class="graph-header">

@@ -62,6 +62,35 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                 </div>
             </section>
 
+            <!-- Pitmaster Score -->
+            <section class="card pitmaster-card" id="pitmaster-card">
+                <div class="pm-row">
+                    <div class="pm-score-ring">
+                        <svg viewBox="0 0 100 100">
+                            <circle class="pm-ring-bg" cx="50" cy="50" r="42" />
+                            <circle class="pm-ring-fill" id="pm-ring-fill" cx="50" cy="50" r="42" />
+                        </svg>
+                        <div class="pm-score-text">
+                            <span id="pm-score">--</span>
+                        </div>
+                    </div>
+                    <div class="pm-info">
+                        <div class="pm-title" id="pm-title">--</div>
+                        <div class="pm-stats">
+                            <div class="pm-stat">
+                                <span class="pm-stat-label">Streak</span>
+                                <span class="pm-stat-value" id="pm-streak">--</span>
+                            </div>
+                            <div class="pm-stat">
+                                <span class="pm-stat-label">Lid Opens</span>
+                                <span class="pm-stat-value" id="pm-lids">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="pm-wisdom" id="pm-wisdom"></div>
+            </section>
+
             <!-- Temperature Graph -->
             <section class="card graph-card">
                 <div class="graph-header">
@@ -344,6 +373,81 @@ body {
   margin-top: 8px; font-size: 12px; text-transform: uppercase;
   letter-spacing: 2px; color: var(--text2);
 }
+
+/* Pitmaster Score */
+.pitmaster-card { padding: 16px; }
+.pm-row {
+  display: flex; align-items: center; gap: 20px;
+}
+.pm-score-ring {
+  position: relative; width: 90px; height: 90px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.pm-score-ring svg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  transform: rotate(-90deg);
+}
+.pm-ring-bg { fill: none; stroke: var(--surface2); stroke-width: 6; }
+.pm-ring-fill {
+  fill: none; stroke: var(--green); stroke-width: 6;
+  stroke-linecap: round; stroke-dasharray: 263.9; stroke-dashoffset: 263.9;
+  transition: stroke-dashoffset 1s ease, stroke .5s;
+}
+.pm-score-text {
+  position: relative; text-align: center; z-index: 1;
+}
+.pm-score-text span {
+  font-size: 28px; font-weight: 800;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  color: var(--green);
+}
+.pm-info { flex: 1; min-width: 0; }
+.pm-title {
+  font-size: 18px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 1px; margin-bottom: 8px; color: var(--green);
+}
+.pm-stats { display: flex; gap: 16px; }
+.pm-stat {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.pm-stat-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--text2); font-weight: 600;
+}
+.pm-stat-value {
+  font-size: 15px; font-weight: 700;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+.pm-wisdom {
+  margin-top: 12px; padding: 10px 14px;
+  background: var(--bg); border-radius: 8px;
+  font-size: 13px; font-style: italic; color: var(--text2);
+  min-height: 20px; line-height: 1.4;
+  border-left: 3px solid var(--fire);
+}
+.pm-wisdom:empty { display: none; }
+
+/* Score color tiers */
+.pm-score-ring.legendary .pm-ring-fill,
+.pm-info.legendary .pm-title { color: #f1c40f; }
+.pm-score-ring.legendary .pm-ring-fill { stroke: #f1c40f; }
+.pm-score-text.legendary span { color: #f1c40f; }
+
+.pm-score-ring.great .pm-ring-fill { stroke: var(--green); }
+.pm-score-text.great span { color: var(--green); }
+.pm-info.great .pm-title { color: var(--green); }
+
+.pm-score-ring.good .pm-ring-fill { stroke: var(--blue); }
+.pm-score-text.good span { color: var(--blue); }
+.pm-info.good .pm-title { color: var(--blue); }
+
+.pm-score-ring.mid .pm-ring-fill { stroke: var(--fire); }
+.pm-score-text.mid span { color: var(--fire); }
+.pm-info.mid .pm-title { color: var(--fire); }
+
+.pm-score-ring.low .pm-ring-fill { stroke: var(--red); }
+.pm-score-text.low span { color: var(--red); }
+.pm-info.low .pm-title { color: var(--red); }
 
 /* Temperature Graph */
 .graph-card { padding-bottom: 12px; }
@@ -636,6 +740,11 @@ let localAtFetch = 0;    // Date.now() when history was fetched
 let graphInited = false;
 let graphRangeSec = 14400; // 0 = all data
 
+// --- Pitmaster Score State ---
+let wisdomQuote = '';
+let lastWisdomFetch = 0;
+const WISDOM_INTERVAL = 30000; // 30 seconds
+
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
   fetchHistory();
@@ -643,6 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(updateStatus, POLL_MS);
   window.addEventListener('resize', function() { drawGraph(); if (document.getElementById('tab-pid') && document.getElementById('tab-pid').classList.contains('active')) { drawPidDiagram(); drawPidTermsBar(); drawAugerGauge(); drawPidChart(); } });
   checkVersionStatus();
+  fetchWisdom();
 });
 
 // --- Toast Notifications ---
@@ -775,6 +885,10 @@ function updateUI(s) {
 
   // Append to graph
   appendGraphPoint(s);
+
+  // Pitmaster Score + Wisdom
+  updatePitmasterUI(s);
+  maybeRefreshWisdom();
 }
 
 // --- Temperature Graph ---
@@ -1198,6 +1312,68 @@ function updateFastOtaBtn(active) {
   if (!btn) return;
   btn.textContent = 'Fast OTA: ' + (active ? 'On' : 'Off');
   if (active) btn.classList.add('active'); else btn.classList.remove('active');
+}
+
+// --- Pitmaster Score ---
+function updatePitmasterUI(s) {
+  var card = document.getElementById('pitmaster-card');
+  if (!card) return;
+  var pm = s.pitmaster;
+  if (!pm) { card.style.display = 'none'; return; }
+
+  var score = parseFloat(pm.score) || 0;
+  var state = s.state || 'Idle';
+  var isActive = (state === 'Running' || state === 'Starting' || state === 'Reignite');
+
+  if (!isActive && score <= 0) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  // Score value
+  document.getElementById('pm-score').textContent = score.toFixed(0);
+
+  // Ring fill (circumference = 2 * PI * 42 = 263.9)
+  var circumference = 263.9;
+  var ring = document.getElementById('pm-ring-fill');
+  ring.style.strokeDashoffset = circumference * (1 - score / 100);
+
+  // Title
+  document.getElementById('pm-title').textContent = pm.title || '--';
+
+  // Streak
+  var streak = pm.streak || 0;
+  var streakText = streak < 60 ? streak + 's' : Math.floor(streak / 60) + 'm ' + (streak % 60) + 's';
+  document.getElementById('pm-streak').textContent = streak > 0 ? streakText : '--';
+
+  // Lid opens
+  document.getElementById('pm-lids').textContent = pm.lidOpens || 0;
+
+  // Color tier
+  var tier = score >= 90 ? 'legendary' : score >= 75 ? 'great' : score >= 60 ? 'good' : score >= 40 ? 'mid' : 'low';
+  var scoreRing = card.querySelector('.pm-score-ring');
+  var scoreText = card.querySelector('.pm-score-text');
+  var info = card.querySelector('.pm-info');
+  ['legendary','great','good','mid','low'].forEach(function(c) {
+    scoreRing.classList.remove(c); scoreText.classList.remove(c); info.classList.remove(c);
+  });
+  scoreRing.classList.add(tier); scoreText.classList.add(tier); info.classList.add(tier);
+}
+
+async function fetchWisdom() {
+  try {
+    var r = await fetch(API + '/wisdom');
+    if (!r.ok) return;
+    var d = await r.json();
+    wisdomQuote = d.quote || '';
+    var el = document.getElementById('pm-wisdom');
+    if (el) el.textContent = wisdomQuote;
+    lastWisdomFetch = Date.now();
+  } catch (e) { /* silent */ }
+}
+
+function maybeRefreshWisdom() {
+  if (Date.now() - lastWisdomFetch >= WISDOM_INTERVAL) {
+    fetchWisdom();
+  }
 }
 
 // --- Tab System ---
@@ -1796,6 +1972,5 @@ function drawPidChart() {
   ctx.globalAlpha = 1;
 }
 )rawliteral";
-
 
 #endif // WEB_CONTENT_H

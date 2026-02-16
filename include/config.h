@@ -104,6 +104,17 @@
 #define LID_CLOSE_RECOVERY_TIME        30000   // ms - stable before declaring lid closed
 #define LID_OPEN_MIN_DURATION          5000    // ms - minimum to avoid false triggers
 
+// Pitmaster Score (gamification during cook sessions)
+#define ENABLE_PITMASTER_SCORE       true
+#define PITMASTER_SCORE_INITIAL      100.0    // Starting score
+#define PITMASTER_PRECISION_BONUS    0.05     // Points/update when within 2°F of setpoint
+#define PITMASTER_DRIFT_PENALTY      0.03     // Points/update per °F beyond 5°F deviation
+#define PITMASTER_OVERSHOOT_PENALTY  0.06     // Points/update per °F beyond 15°F deviation
+#define PITMASTER_LID_PENALTY        3.0      // Points lost per lid-open event
+#define PITMASTER_REIGNITE_PENALTY   15.0     // Points lost per reignite attempt
+#define PITMASTER_SCORE_MIN          0.0
+#define PITMASTER_SCORE_MAX          100.0
+
 // Temperature History (ring buffer for web graph)
 // Budget: ~30KB for history (ESP32-S3 no PSRAM needs ~100KB free for WiFi)
 // 2500 samples × 12 bytes = 30KB → ~14 hours at 20s intervals

@@ -79,6 +79,81 @@ body {
   letter-spacing: 2px; color: var(--text2);
 }
 
+/* Pitmaster Score */
+.pitmaster-card { padding: 16px; }
+.pm-row {
+  display: flex; align-items: center; gap: 20px;
+}
+.pm-score-ring {
+  position: relative; width: 90px; height: 90px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.pm-score-ring svg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  transform: rotate(-90deg);
+}
+.pm-ring-bg { fill: none; stroke: var(--surface2); stroke-width: 6; }
+.pm-ring-fill {
+  fill: none; stroke: var(--green); stroke-width: 6;
+  stroke-linecap: round; stroke-dasharray: 263.9; stroke-dashoffset: 263.9;
+  transition: stroke-dashoffset 1s ease, stroke .5s;
+}
+.pm-score-text {
+  position: relative; text-align: center; z-index: 1;
+}
+.pm-score-text span {
+  font-size: 28px; font-weight: 800;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  color: var(--green);
+}
+.pm-info { flex: 1; min-width: 0; }
+.pm-title {
+  font-size: 18px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 1px; margin-bottom: 8px; color: var(--green);
+}
+.pm-stats { display: flex; gap: 16px; }
+.pm-stat {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.pm-stat-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--text2); font-weight: 600;
+}
+.pm-stat-value {
+  font-size: 15px; font-weight: 700;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+.pm-wisdom {
+  margin-top: 12px; padding: 10px 14px;
+  background: var(--bg); border-radius: 8px;
+  font-size: 13px; font-style: italic; color: var(--text2);
+  min-height: 20px; line-height: 1.4;
+  border-left: 3px solid var(--fire);
+}
+.pm-wisdom:empty { display: none; }
+
+/* Score color tiers */
+.pm-score-ring.legendary .pm-ring-fill,
+.pm-info.legendary .pm-title { color: #f1c40f; }
+.pm-score-ring.legendary .pm-ring-fill { stroke: #f1c40f; }
+.pm-score-text.legendary span { color: #f1c40f; }
+
+.pm-score-ring.great .pm-ring-fill { stroke: var(--green); }
+.pm-score-text.great span { color: var(--green); }
+.pm-info.great .pm-title { color: var(--green); }
+
+.pm-score-ring.good .pm-ring-fill { stroke: var(--blue); }
+.pm-score-text.good span { color: var(--blue); }
+.pm-info.good .pm-title { color: var(--blue); }
+
+.pm-score-ring.mid .pm-ring-fill { stroke: var(--fire); }
+.pm-score-text.mid span { color: var(--fire); }
+.pm-info.mid .pm-title { color: var(--fire); }
+
+.pm-score-ring.low .pm-ring-fill { stroke: var(--red); }
+.pm-score-text.low span { color: var(--red); }
+.pm-info.low .pm-title { color: var(--red); }
+
 /* Temperature Graph */
 .graph-card { padding-bottom: 12px; }
 .graph-header {
