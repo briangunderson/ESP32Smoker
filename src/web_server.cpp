@@ -45,10 +45,14 @@ void WebServer::setupRoutes() {
     request->send_P(200, "text/html", web_index_html);
   });
   _server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest* request) {
-    request->send_P(200, "text/css", web_style_css);
+    AsyncWebServerResponse* response = request->beginResponse_P(200, "text/css", web_style_css_gz, web_style_css_gz_len);
+    response->addHeader("Content-Encoding", "gzip");
+    request->send(response);
   });
   _server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest* request) {
-    request->send_P(200, "application/javascript", web_script_js);
+    AsyncWebServerResponse* response = request->beginResponse_P(200, "application/javascript", web_script_js_gz, web_script_js_gz_len);
+    response->addHeader("Content-Encoding", "gzip");
+    request->send(response);
   });
 
   // API: Get current status

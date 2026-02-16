@@ -44,7 +44,7 @@ void mock_reset_gpio(void) {
 }
 
 void mock_reset_all(void) {
-    _mock_millis = 0;
+    _mock_millis = 15000;  // Simulate post-boot (past 10s grace period)
     mock_reset_gpio();
 }
 
