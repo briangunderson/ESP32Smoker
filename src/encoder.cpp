@@ -50,6 +50,13 @@ bool Encoder::begin() {
       _counterValid = true;
     }
 
+    // Read initial button state to prevent false edge detection on first poll
+    uint8_t btnBuf[1];
+    if (writeRegThenRead(ENCODER_REG_BUTTON, btnBuf, 1)) {
+      _lastButtonState = (btnBuf[0] != 0);
+      _buttonState = _lastButtonState;
+    }
+
     setLEDColor(0, 20, 0); // Dim green = idle
 
     if (ENABLE_SERIAL_DEBUG) {

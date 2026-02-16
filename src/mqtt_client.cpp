@@ -19,7 +19,7 @@ MQTTClient::MQTTClient(TemperatureController* controller,
       _brokerHost(brokerHost), _brokerPort(brokerPort),
       _clientId(MQTT_CLIENT_ID), _rootTopic(MQTT_ROOT_TOPIC),
       _lastPublish(0), _lastTelemetry(0),
-      _subscribed(false), _discoveryPublished(false) {}
+      _subscribed(false), _discoveryPublished(false), _subscribeTime(0) {}
 
 // ============================================================================
 // LIFECYCLE
@@ -134,6 +134,7 @@ void MQTTClient::subscribe() {
   _mqttClient.subscribe(setpointTopic.c_str());
 
   _subscribed = true;
+  _subscribeTime = millis();
 
   if (ENABLE_SERIAL_DEBUG) {
     Serial.println("[MQTT] Subscribed to control topics");
@@ -167,6 +168,12 @@ void MQTTClient::handleMessage(char* topic, byte* payload,
   String prefix = String(_rootTopic) + "/command/";
 
   if (!topicStr.startsWith(prefix)) return;
+
+  // Ignore retained messages delivered immediately after subscribing
+  if (_subscribeTime > 0 && millis() - _subscribeTime < 2000) {
+    Serial.printf("[MQTT] Ignoring retained message during subscribe grace period: %s\n", topic);
+    return;
+  }
 
   String command = topicStr.substring(prefix.length());
 

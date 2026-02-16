@@ -45,6 +45,7 @@ private:
   uint32_t _lastTelemetry;
   bool _subscribed;
   bool _discoveryPublished;
+  unsigned long _subscribeTime;  // millis() when subscribed — ignore retained msgs briefly
 
   // Static instance for callback routing
   static MQTTClient* _instance;
