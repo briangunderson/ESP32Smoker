@@ -237,7 +237,7 @@
 // FIRMWARE METADATA
 // ============================================================================
 
-#define FIRMWARE_VERSION  "1.4.0"
+#define FIRMWARE_VERSION  "1.5.0"
 #define FIRMWARE_BUILD    __DATE__ " " __TIME__
 
 #endif // CONFIG_H
