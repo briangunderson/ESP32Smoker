@@ -305,7 +305,7 @@ void WebServer::setupRoutes() {
       return;
     }
     ControllerState state = _controller->getState();
-    if (state != STATE_IDLE && state != STATE_SHUTDOWN) {
+    if (state != STATE_IDLE && state != STATE_SHUTDOWN && state != STATE_ERROR) {
       request->send(409, "application/json",
                     "{\"error\":\"Cannot update while smoker is active\"}");
       return;

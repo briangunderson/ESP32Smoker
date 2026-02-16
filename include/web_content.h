@@ -43,7 +43,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                         </svg>
                         <div class="temp-value">
                             <span id="current-temp">--</span>
-                            <span class="temp-unit">Â°F</span>
+                            <span class="temp-unit">�F</span>
                         </div>
                     </div>
                     <div class="temp-label">Current</div>
@@ -55,7 +55,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                         </svg>
                         <div class="temp-value">
                             <span id="setpoint-temp">225</span>
-                            <span class="temp-unit">Â°F</span>
+                            <span class="temp-unit">�F</span>
                         </div>
                     </div>
                     <div class="temp-label">Target</div>
@@ -92,7 +92,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                 <div class="setpoint-row">
                     <button class="btn-adj" onclick="adjSetpoint(-5)">-</button>
                     <input type="number" id="setpoint-input" min="150" max="500" value="225" step="5">
-                    <span class="sp-unit">Â°F</span>
+                    <span class="sp-unit">�F</span>
                     <button class="btn-adj" onclick="adjSetpoint(5)">+</button>
                     <button class="btn btn-apply" onclick="applySetpoint()">Set</button>
                 </div>
@@ -174,7 +174,7 @@ const char web_index_html[] PROGMEM = R"rawliteral(
                         </div>
                         <h4>Temperature Override</h4>
                         <div class="override-row">
-                            <input type="number" id="temp-override" min="0" max="600" value="225" placeholder="Â°F">
+                            <input type="number" id="temp-override" min="0" max="600" value="225" placeholder="�F">
                             <button class="btn btn-apply" onclick="setTempOverride()">Set</button>
                             <button class="btn btn-stop" onclick="clearTempOverride()">Clear</button>
                         </div>
@@ -500,14 +500,14 @@ footer { text-align: center; padding: 16px 0; font-size: 12px; color: #555; bord
 .tab-panel { display: block; }
 .tab-panel:not(.active) { display: none; }
 
-/* PID Visualizer â€” Animated Scene */
+/* PID Visualizer � Animated Scene */
 .pid-scene-card { padding-bottom: 12px; }
 #smoker-scene {
   width: 100%; height: 280px; display: block;
   border-radius: 6px; background: var(--bg);
 }
 
-/* PID Brain â€” Three Metaphor Canvases */
+/* PID Brain � Three Metaphor Canvases */
 .pid-brain-row {
   display: grid; grid-template-columns: 1fr 1fr 1fr;
   gap: 12px; margin-bottom: 16px;
@@ -601,11 +601,15 @@ async function post(endpoint, params) {
     var fd = new FormData();
     if (params) Object.entries(params).forEach(function(kv) { fd.append(kv[0], String(kv[1])); });
     var r = await fetch(API + endpoint, { method: 'POST', body: fd });
-    if (!r.ok) throw new Error(r.status);
+    if (!r.ok) {
+      try { var e = await r.json(); toast(e.error || ('HTTP ' + r.status), 'err'); }
+      catch (_) { toast('HTTP ' + r.status, 'err'); }
+      return null;
+    }
     return await r.json();
   } catch (e) {
     console.error('API POST ' + endpoint, e);
-    toast('Request failed', 'err');
+    if (!window._expectReboot) toast('Request failed', 'err');
     return null;
   }
 }
@@ -1116,7 +1120,25 @@ function showUpdateBanner(version) {
 async function applyUpdate() {
   if (!confirm('Install firmware update? The device will reboot.')) return;
   var r = await post('/update/apply');
-  if (r && r.ok) toast('Installing update, device will reboot...', 'info');
+  if (r && r.ok) {
+    toast('Installing update, device will reboot...', 'info');
+    window._expectReboot = true;
+    // Poll until device comes back with new version
+    var attempts = 0;
+    var checkReboot = setInterval(async function() {
+      attempts++;
+      if (attempts > 60) { clearInterval(checkReboot); window._expectReboot = false; toast('Update may have failed � check device', 'err'); return; }
+      try {
+        var resp = await fetch(API + '/version');
+        if (resp.ok) {
+          var v = await resp.json();
+          clearInterval(checkReboot);
+          window._expectReboot = false;
+          toast('Updated to v' + v.current + '!', 'ok');
+        }
+      } catch (_) { /* device still rebooting */ }
+    }, 3000);
+  }
 }
 
 var fastOtaActive = false;
@@ -2495,4 +2517,4 @@ function drawPidChart() {
 }
 )rawliteral";
 
-#endif
+#endif // WEB_CONTENT_H

@@ -301,7 +301,7 @@ void initializeOTA() {
 bool isOtaUpdateSafe() {
   if (!controller) return false;
   ControllerState state = controller->getState();
-  return (state == STATE_IDLE || state == STATE_SHUTDOWN);
+  return (state == STATE_IDLE || state == STATE_SHUTDOWN || state == STATE_ERROR);
 }
 
 // ============================================================================

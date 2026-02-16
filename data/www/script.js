@@ -41,11 +41,15 @@ async function post(endpoint, params) {
     var fd = new FormData();
     if (params) Object.entries(params).forEach(function(kv) { fd.append(kv[0], String(kv[1])); });
     var r = await fetch(API + endpoint, { method: 'POST', body: fd });
-    if (!r.ok) throw new Error(r.status);
+    if (!r.ok) {
+      try { var e = await r.json(); toast(e.error || ('HTTP ' + r.status), 'err'); }
+      catch (_) { toast('HTTP ' + r.status, 'err'); }
+      return null;
+    }
     return await r.json();
   } catch (e) {
     console.error('API POST ' + endpoint, e);
-    toast('Request failed', 'err');
+    if (!window._expectReboot) toast('Request failed', 'err');
     return null;
   }
 }
@@ -556,7 +560,25 @@ function showUpdateBanner(version) {
 async function applyUpdate() {
   if (!confirm('Install firmware update? The device will reboot.')) return;
   var r = await post('/update/apply');
-  if (r && r.ok) toast('Installing update, device will reboot...', 'info');
+  if (r && r.ok) {
+    toast('Installing update, device will reboot...', 'info');
+    window._expectReboot = true;
+    // Poll until device comes back with new version
+    var attempts = 0;
+    var checkReboot = setInterval(async function() {
+      attempts++;
+      if (attempts > 60) { clearInterval(checkReboot); window._expectReboot = false; toast('Update may have failed — check device', 'err'); return; }
+      try {
+        var resp = await fetch(API + '/version');
+        if (resp.ok) {
+          var v = await resp.json();
+          clearInterval(checkReboot);
+          window._expectReboot = false;
+          toast('Updated to v' + v.current + '!', 'ok');
+        }
+      } catch (_) { /* device still rebooting */ }
+    }, 3000);
+  }
 }
 
 var fastOtaActive = false;
