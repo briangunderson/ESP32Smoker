@@ -119,6 +119,9 @@
 #define IGNITER_PREHEAT_TIME     60000 // ms to preheat igniter before starting
 #define FAN_STARTUP_DELAY        5000  // ms to delay fan after igniter
 #define STARTUP_TIMEOUT          180000 // ms before startup failure
+#ifndef BOOT_GRACE_PERIOD_MS
+#define BOOT_GRACE_PERIOD_MS     10000  // ms to ignore start commands after boot
+#endif
 #define SHUTDOWN_COOL_TIMEOUT    300000 // ms to wait before shutdown complete
 
 // Safety Limits

@@ -131,7 +131,7 @@ void TemperatureController::update() {
 void TemperatureController::startSmoking(float targetTemp) {
   // Safety: ignore start commands during boot grace period to prevent auto-start
   // from stale encoder button state, MQTT retained messages, or I2C noise
-  if (millis() < 10000) {
+  if (millis() < BOOT_GRACE_PERIOD_MS) {
     Serial.println("[CTRL] Ignoring start during boot grace period");
     return;
   }
