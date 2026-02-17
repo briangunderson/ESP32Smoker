@@ -49,9 +49,9 @@ void tearDown(void) {
 void test_rapid_temp_drop_detects_lid_open(void) {
     get_to_running(225.0f);
 
-    // Simulate rapid temp drop: -5F/s over 2s interval = -10F drop
-    // dT/dt = -10 / 2 = -5 F/s (below LID_OPEN_DERIVATIVE_THRESHOLD of -2.0)
-    ctrl->setTempOverride(215.0f);  // 10F drop from 225
+    // Simulate rapid temp drop: 25F drop over 2s interval
+    // dT/dt = -25 / 2 = -12.5 F/s (below LID_OPEN_DERIVATIVE_THRESHOLD of -10.0)
+    ctrl->setTempOverride(200.0f);  // 25F drop from 225
     mock_advance_millis(2000);
     ctrl->update();
 
@@ -85,8 +85,8 @@ void test_lid_only_detected_in_running_state(void) {
 void test_lid_closes_after_stable_period(void) {
     get_to_running(225.0f);
 
-    // Open the lid (rapid drop)
-    ctrl->setTempOverride(215.0f);
+    // Open the lid (rapid 25F drop = -12.5 F/s, below -10.0 threshold)
+    ctrl->setTempOverride(200.0f);
     mock_advance_millis(2000);
     ctrl->update();
     TEST_ASSERT_TRUE(ctrl->isLidOpen());
@@ -94,7 +94,7 @@ void test_lid_closes_after_stable_period(void) {
     // Temperature stabilizes (small changes, no rapid drop)
     for (unsigned long t = 0; t < (uint32_t)LID_CLOSE_RECOVERY_TIME + 4000; t += 2000) {
         mock_advance_millis(2000);
-        ctrl->setTempOverride(215.0f);  // Stable temp
+        ctrl->setTempOverride(200.0f);  // Stable temp
         ctrl->update();
     }
 
@@ -104,16 +104,16 @@ void test_lid_closes_after_stable_period(void) {
 void test_lid_stays_open_with_continued_drop(void) {
     get_to_running(225.0f);
 
-    // Open the lid
-    ctrl->setTempOverride(215.0f);
+    // Open the lid (rapid 25F drop = -12.5 F/s, below -10.0 threshold)
+    ctrl->setTempOverride(200.0f);
     mock_advance_millis(2000);
     ctrl->update();
     TEST_ASSERT_TRUE(ctrl->isLidOpen());
 
-    // Continue dropping — lid should stay open, stable timer resets
-    float temp = 215.0f;
-    for (int i = 0; i < 10; i++) {
-        temp -= 3.0f;  // -1.5 F/s, still dropping
+    // Continue dropping fast — lid should stay open, stable timer resets
+    float temp = 200.0f;
+    for (int i = 0; i < 5; i++) {
+        temp -= 22.0f;  // -11 F/s, still below -10.0 threshold
         ctrl->setTempOverride(temp);
         mock_advance_millis(2000);
         ctrl->update();
@@ -133,8 +133,8 @@ void test_integral_frozen_during_lid_open(void) {
     auto pid_before = ctrl->getPIDStatus();
     float integral_before = pid_before.integralTerm;
 
-    // Open the lid
-    ctrl->setTempOverride(215.0f);
+    // Open the lid (rapid 25F drop = -12.5 F/s, below -10.0 threshold)
+    ctrl->setTempOverride(200.0f);
     mock_advance_millis(2000);
     ctrl->update();
     TEST_ASSERT_TRUE(ctrl->isLidOpen());
@@ -163,8 +163,8 @@ void test_lid_open_duration_reports_correctly(void) {
     // Lid not open — duration should be 0
     TEST_ASSERT_EQUAL(0, ctrl->getLidOpenDuration());
 
-    // Open lid
-    ctrl->setTempOverride(215.0f);
+    // Open lid (rapid 25F drop = -12.5 F/s, below -10.0 threshold)
+    ctrl->setTempOverride(200.0f);
     mock_advance_millis(2000);
     ctrl->update();
     TEST_ASSERT_TRUE(ctrl->isLidOpen());

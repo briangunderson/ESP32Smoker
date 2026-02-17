@@ -92,8 +92,8 @@ void test_reignite_not_triggered_during_lid_open(void) {
         ctrl->update();
     }
 
-    // Simulate lid open (rapid temp drop)
-    ctrl->setTempOverride(218.0f);  // -3.5F/s > threshold of -2.0
+    // Simulate lid open (rapid temp drop: 45F in 2s = -22.5 F/s, below -10.0)
+    ctrl->setTempOverride(180.0f);
     mock_advance_millis(2000);
     ctrl->update();
 

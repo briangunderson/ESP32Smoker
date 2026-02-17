@@ -151,8 +151,8 @@ void test_startup_timeout_enters_error(void) {
     ctrl->setTempOverride(70.0);  // Below threshold
     ctrl->startSmoking(225.0);
 
-    // Advance past STARTUP_TIMEOUT (180s)
-    mock_set_millis(182000);
+    // Advance past STARTUP_TIMEOUT (300s)
+    mock_set_millis(302000);
     ctrl->update();
 
     TEST_ASSERT_EQUAL(STATE_ERROR, ctrl->getState());
