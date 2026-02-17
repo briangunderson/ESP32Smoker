@@ -1303,75 +1303,121 @@ function drawPidSpring(ts) {
   ctx.fillText('How far off?', W / 2, 28);
 
   // Layout
-  var cy = H * 0.55;
-  var margin = 14;
-  var maxStretch = W - margin * 2;
+  var cy = H * 0.5;
+  var margin = 20;
+  var halfSpan = (W / 2) - margin; // max distance from center to edge
 
-  // Error maps to spring stretch: 0 error = centered, large error = stretched
+  // Error: positive = above setpoint, negative = below
+  // Use log-scale for large errors so it works from 1°F to 200°F
   var errAbs = Math.abs(S.error);
-  var errSign = S.error < 0 ? -1 : 1; // negative = below setpoint
-  var stretchFrac = Math.min(1, errAbs / 30); // 30 deg = max stretch
+  var stretchFrac = errAbs < 1 ? 0 : Math.min(1, Math.log10(errAbs) / Math.log10(200));
 
-  // NOW and TARGET positions
-  var centerX = W / 2;
-  var targetX = centerX + maxStretch * 0.3;
-  var nowX = centerX - stretchFrac * maxStretch * 0.3 * errSign;
-  // Clamp
-  nowX = Math.max(margin + 10, Math.min(W - margin - 10, nowX));
+  // TARGET stays at center-right, NOW moves left when below, right when above
+  var targetX = W / 2 + 8; // slightly right of center
+  // When below setpoint (error < 0), NOW goes LEFT; when above, NOW goes RIGHT
+  var nowX;
+  if (S.error <= 0) {
+    // Below setpoint: NOW is to the left
+    nowX = targetX - stretchFrac * halfSpan;
+  } else {
+    // Above setpoint: NOW is to the right
+    nowX = targetX + stretchFrac * halfSpan;
+  }
+  // Clamp both endpoints within canvas
+  nowX = Math.max(margin, Math.min(W - margin, nowX));
+  targetX = Math.max(margin, Math.min(W - margin, targetX));
 
   // Spring color: green (small error) -> orange -> red (large error)
   var springColor;
   if (errAbs < 3) springColor = '#4ade80';
-  else if (errAbs < 10) springColor = '#e8842c';
+  else if (errAbs < 15) springColor = '#e8842c';
   else springColor = '#ef4444';
 
-  // Draw spring (zigzag line)
+  // Draw spring (zigzag line between NOW and TARGET)
   var leftX = Math.min(nowX, targetX);
   var rightX = Math.max(nowX, targetX);
   var springLen = rightX - leftX;
   var coils = 8;
-  var amplitude = 8 - stretchFrac * 4; // less amplitude when stretched
+  // When collapsed (no error), show tight coils; when stretched, coils elongate and flatten
+  var amplitude = springLen < 10 ? 6 : Math.max(3, 8 - stretchFrac * 5);
 
-  ctx.strokeStyle = springColor;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(leftX, cy);
-  for (var si = 1; si <= coils * 2; si++) {
-    var sx = leftX + (si / (coils * 2)) * springLen;
-    var sy = cy + (si % 2 === 0 ? -amplitude : amplitude);
-    ctx.lineTo(sx, sy);
+  if (springLen > 4) {
+    ctx.strokeStyle = springColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(leftX, cy);
+    for (var si = 1; si <= coils * 2; si++) {
+      var sx = leftX + (si / (coils * 2)) * springLen;
+      var sy = cy + (si % 2 === 0 ? -amplitude : amplitude);
+      ctx.lineTo(sx, sy);
+    }
+    ctx.lineTo(rightX, cy);
+    ctx.stroke();
+  } else {
+    // Nearly zero error: draw a small relaxed coil symbol at center
+    ctx.strokeStyle = springColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    var coilCx = (nowX + targetX) / 2;
+    for (var si2 = 0; si2 <= coils * 2; si2++) {
+      var sx2 = coilCx - 12 + (si2 / (coils * 2)) * 24;
+      var sy2 = cy + (si2 % 2 === 0 ? -5 : 5);
+      si2 === 0 ? ctx.moveTo(sx2, sy2) : ctx.lineTo(sx2, sy2);
+    }
+    ctx.stroke();
   }
-  ctx.lineTo(rightX, cy);
-  ctx.stroke();
+
+  // Determine label positions: prevent overlap by checking distance
+  var dist = Math.abs(nowX - targetX);
+  var labelsOverlap = dist < 45;
+
+  // TARGET endpoint (draw first so NOW draws on top if overlapping)
+  ctx.fillStyle = '#4ade80';
+  ctx.beginPath();
+  ctx.arc(targetX, cy, 5, 0, Math.PI * 2);
+  ctx.fill();
 
   // NOW endpoint
   ctx.fillStyle = '#e8842c';
   ctx.beginPath();
   ctx.arc(nowX, cy, 6, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 8px -apple-system, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('NOW', nowX, cy + 18);
-  ctx.fillStyle = '#e8842c';
-  ctx.font = '9px SF Mono, Consolas, monospace';
-  ctx.fillText(S.temp.toFixed(0) + '\u00B0', nowX, cy - 12);
 
-  // TARGET endpoint
-  ctx.fillStyle = '#4ade80';
-  ctx.beginPath();
-  ctx.arc(targetX, cy, 6, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 8px -apple-system, sans-serif';
-  ctx.fillText('TARGET', targetX, cy + 18);
-  ctx.fillStyle = '#4ade80';
-  ctx.font = '9px SF Mono, Consolas, monospace';
-  ctx.fillText(S.setpoint.toFixed(0) + '\u00B0', targetX, cy - 12);
+  if (labelsOverlap) {
+    // Stack labels vertically when endpoints are close
+    // TARGET above, NOW below
+    ctx.font = 'bold 7px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
 
-  // P value
+    ctx.fillStyle = '#4ade80';
+    ctx.fillText('TARGET ' + S.setpoint.toFixed(0) + '\u00B0', W / 2, cy - 18);
+
+    ctx.fillStyle = '#e8842c';
+    ctx.fillText('NOW ' + S.temp.toFixed(0) + '\u00B0', W / 2, cy + 24);
+  } else {
+    // Labels next to their respective endpoints
+    ctx.font = 'bold 7px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+
+    // TARGET label
+    ctx.fillStyle = '#fff';
+    ctx.fillText('TARGET', targetX, cy - 14);
+    ctx.fillStyle = '#4ade80';
+    ctx.font = '8px SF Mono, Consolas, monospace';
+    ctx.fillText(S.setpoint.toFixed(0) + '\u00B0', targetX, cy + 18);
+
+    // NOW label
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 7px -apple-system, sans-serif';
+    ctx.fillText('NOW', nowX, cy - 14);
+    ctx.fillStyle = '#e8842c';
+    ctx.font = '8px SF Mono, Consolas, monospace';
+    ctx.fillText(S.temp.toFixed(0) + '\u00B0', nowX, cy + 18);
+  }
+
+  // P value at bottom
   ctx.fillStyle = '#38bdf8';
-  ctx.font = 'bold 12px SF Mono, Consolas, monospace';
+  ctx.font = 'bold 11px SF Mono, Consolas, monospace';
   ctx.textAlign = 'center';
   ctx.fillText('P = ' + S.p.toFixed(3), W / 2, H - 8);
 }
@@ -1504,7 +1550,7 @@ function drawPidBucket(ts) {
 
   // I value
   ctx.fillStyle = '#4ade80';
-  ctx.font = 'bold 12px SF Mono, Consolas, monospace';
+  ctx.font = 'bold 11px SF Mono, Consolas, monospace';
   ctx.textAlign = 'center';
   ctx.fillText('I = ' + S.i.toFixed(3), W / 2, H - 8);
 }
@@ -1560,7 +1606,7 @@ function drawPidSpeedo(ts) {
   ctx.fillStyle = '#38bdf8';
   ctx.fillText('COOL', cx - gaugeR * 0.7, cy + 14);
   ctx.fillStyle = '#4ade80';
-  ctx.fillText('STABLE', cx, cy - gaugeR + 18);
+  ctx.fillText('STABLE', cx, cy - gaugeR - 4);
   ctx.fillStyle = '#ef4444';
   ctx.fillText('HEAT', cx + gaugeR * 0.7, cy + 14);
 
@@ -1621,7 +1667,7 @@ function drawPidSpeedo(ts) {
 
   // D value
   ctx.fillStyle = '#e8842c';
-  ctx.font = 'bold 12px SF Mono, Consolas, monospace';
+  ctx.font = 'bold 11px SF Mono, Consolas, monospace';
   ctx.fillText('D = ' + S.d.toFixed(3), W / 2, H - 8);
 }
 
