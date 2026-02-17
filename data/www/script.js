@@ -94,13 +94,13 @@ function updateUI(s) {
 
   // Ring color: blue < 150, orange 150-350, red > 350
   if (temp < 0 || temp > 1000) {
-    ring.style.stroke = '#555';
+    ring.style.stroke = '#57534e';
   } else if (temp < 150) {
-    ring.style.stroke = '#3498db';
+    ring.style.stroke = '#38bdf8';
   } else if (temp > 400) {
-    ring.style.stroke = '#e74c3c';
+    ring.style.stroke = '#ef4444';
   } else {
-    ring.style.stroke = '#ff6b35';
+    ring.style.stroke = '#e8842c';
   }
 
   // State badge
@@ -162,7 +162,7 @@ function updateUI(s) {
 
 // --- Temperature Graph ---
 var STATE_NAMES = ['Idle','Startup','Running','Cooldown','Shutdown','Error','Reignite'];
-var STATE_COLORS = ['#555','#ff6b35','#2ecc71','#3498db','#f1c40f','#e74c3c','#e67e22'];
+var STATE_COLORS = ['#57534e','#e8842c','#4ade80','#38bdf8','#facc15','#ef4444','#d4621a'];
 
 async function fetchHistory() {
   try {
@@ -239,7 +239,7 @@ function drawGraph() {
   ctx.scale(dpr, dpr);
 
   // Clear
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = '#0c0a09';
   ctx.fillRect(0, 0, W, H);
 
   var vis = getVisibleData();
@@ -247,7 +247,7 @@ function drawGraph() {
   var visEvents = vis.events;
 
   if (visSamples.length < 2) {
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = '#78716c';
     ctx.font = '13px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Collecting data\u2026', W / 2, H / 2);
@@ -289,21 +289,21 @@ function drawGraph() {
       var p = visSamples[i];
       var n = visSamples[i + 1];
       var x0 = tx(p.t), x1 = tx(n.t);
-      var col = STATE_COLORS[p.st] || '#555';
+      var col = STATE_COLORS[p.st] || '#57534e';
       ctx.fillStyle = hexAlpha(col, 0.06);
       ctx.fillRect(x0, padT, x1 - x0, gH);
     }
   }
 
   // Grid lines
-  ctx.strokeStyle = '#222';
+  ctx.strokeStyle = '#1c1917';
   ctx.lineWidth = 0.5;
   // Y grid
   var yStep = niceStep(cMax - cMin, 5);
   for (var v = Math.ceil(cMin / yStep) * yStep; v <= cMax; v += yStep) {
     var y = ty(v);
     ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
-    ctx.fillStyle = '#666';
+    ctx.fillStyle = '#78716c';
     ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText(v + '\u00B0', padL - 4, y + 3);
@@ -315,7 +315,7 @@ function drawGraph() {
   for (var t = Math.ceil(tMin / xStep) * xStep; t <= tMax; t += xStep) {
     var x = tx(t);
     ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + gH); ctx.stroke();
-    ctx.fillStyle = '#666';
+    ctx.fillStyle = '#78716c';
     ctx.font = '10px -apple-system, sans-serif';
     var ago = tMax - t;
     ctx.fillText(ago < 5 ? 'now' : fmtAgo(ago), x, H - 4);
@@ -327,7 +327,7 @@ function drawGraph() {
     var e = visEvents[i];
     if (e.t < tMin || e.t > tMax) continue;
     var x = tx(e.t);
-    ctx.strokeStyle = STATE_COLORS[e.st] || '#666';
+    ctx.strokeStyle = STATE_COLORS[e.st] || '#78716c';
     ctx.globalAlpha = 0.4;
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
@@ -336,7 +336,7 @@ function drawGraph() {
     // Only draw label if it won't overlap the previous one
     if (x - lastLabelX > 70) {
       ctx.globalAlpha = 0.7;
-      ctx.fillStyle = STATE_COLORS[e.st] || '#666';
+      ctx.fillStyle = STATE_COLORS[e.st] || '#78716c';
       ctx.font = '9px -apple-system, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(STATE_NAMES[e.st] || '', x, padT - 2);
@@ -346,7 +346,7 @@ function drawGraph() {
   }
 
   // Setpoint line (dashed)
-  ctx.strokeStyle = '#e74c3c';
+  ctx.strokeStyle = '#ef4444';
   ctx.globalAlpha = 0.6;
   ctx.lineWidth = 1.5;
   ctx.setLineDash([6, 4]);
@@ -361,7 +361,7 @@ function drawGraph() {
   ctx.globalAlpha = 1;
 
   // Temperature line
-  ctx.strokeStyle = '#ff6b35';
+  ctx.strokeStyle = '#e8842c';
   ctx.lineWidth = 2;
   ctx.lineJoin = 'round';
   ctx.beginPath();
@@ -379,7 +379,7 @@ function drawGraph() {
     var last = visSamples[visSamples.length - 1];
     if (last.c > -100 && last.c < 1000) {
       var lx = tx(last.t), ly = ty(last.c);
-      ctx.fillStyle = '#ff6b35';
+      ctx.fillStyle = '#e8842c';
       ctx.font = 'bold 11px -apple-system, sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText(last.c.toFixed(0) + '\u00B0', lx + 4, ly + 4);
@@ -824,7 +824,7 @@ function drawSmokerScene(ts) {
   var t = ts / 1000; // time in seconds
 
   // Clear
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = '#0c0a09';
   ctx.fillRect(0, 0, W, H);
 
   // --- Layout proportions ---
@@ -898,7 +898,7 @@ function drawSmokerScene(ts) {
   }
 
   // Hopper label
-  ctx.fillStyle = '#aaa';
+  ctx.fillStyle = '#a8a29e';
   ctx.font = '9px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('HOPPER', hopperX + hopperW / 2, hopperY - 3);
@@ -906,13 +906,13 @@ function drawSmokerScene(ts) {
   // --- Draw Auger Tube ---
   ctx.fillStyle = '#3a3a3a';
   ctx.fillRect(augerTubeX1, augerTubeY, augerTubeX2 - augerTubeX1, augerTubeH);
-  ctx.strokeStyle = '#555';
+  ctx.strokeStyle = '#57534e';
   ctx.lineWidth = 1;
   ctx.strokeRect(augerTubeX1, augerTubeY, augerTubeX2 - augerTubeX1, augerTubeH);
 
   // Auger screw (animated sine wave)
   var augerPhase = S.augerOn ? (t * 3) : 0;
-  ctx.strokeStyle = '#888';
+  ctx.strokeStyle = '#a8a29e';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   var augerLen = augerTubeX2 - augerTubeX1;
@@ -940,19 +940,19 @@ function drawSmokerScene(ts) {
   ctx.lineTo(chamberX, chamberY + chamberH);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = '#444';
+  ctx.strokeStyle = '#44403c';
   ctx.lineWidth = 2;
   ctx.stroke();
 
   // Lid open effect
   if (S.lidOpen) {
     ctx.save();
-    ctx.fillStyle = 'rgba(231, 76, 60, 0.12)';
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.12)';
     ctx.fillRect(chamberX, chamberY - 8, chamberW, chamberH + 8);
     // Gap at top showing lid ajar
-    ctx.fillStyle = '#111';
+    ctx.fillStyle = '#0c0a09';
     ctx.fillRect(chamberX + 2, chamberY - 4, chamberW - 4, 6);
-    ctx.fillStyle = '#e74c3c';
+    ctx.fillStyle = '#ef4444';
     ctx.font = 'bold 11px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('LID OPEN', chamberX + chamberW / 2, chamberY + 18);
@@ -961,14 +961,14 @@ function drawSmokerScene(ts) {
 
   // Deflector plate (angled)
   var defY = chamberY + chamberH * 0.55;
-  ctx.strokeStyle = '#666';
+  ctx.strokeStyle = '#78716c';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(chamberX + 10, defY + 8);
   ctx.lineTo(chamberX + chamberW * 0.6, defY - 4);
   ctx.stroke();
   // Add metallic sheen
-  ctx.strokeStyle = '#555';
+  ctx.strokeStyle = '#57534e';
   ctx.lineWidth = 0.5;
   ctx.beginPath();
   ctx.moveTo(chamberX + 10, defY + 10);
@@ -978,7 +978,7 @@ function drawSmokerScene(ts) {
   // Grill grates
   var grateY1 = chamberY + chamberH * 0.22;
   var grateY2 = chamberY + chamberH * 0.38;
-  ctx.strokeStyle = '#555';
+  ctx.strokeStyle = '#57534e';
   ctx.lineWidth = 1.5;
   for (var gy = grateY1; gy <= grateY2; gy += (grateY2 - grateY1) / 3) {
     ctx.beginPath();
@@ -1056,7 +1056,7 @@ function drawSmokerScene(ts) {
   ctx.lineTo(firepotX + firepotW, firepotY);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = '#555';
+  ctx.strokeStyle = '#57534e';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
@@ -1116,7 +1116,7 @@ function drawSmokerScene(ts) {
   ctx.translate(fanX, fanY);
 
   // Fan housing circle
-  ctx.strokeStyle = '#555';
+  ctx.strokeStyle = '#57534e';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.arc(0, 0, fanR + 3, 0, Math.PI * 2);
@@ -1124,7 +1124,7 @@ function drawSmokerScene(ts) {
 
   // Fan blades (3 arms)
   var fanAngle = S.fanOn ? (t * 8) : 0;
-  ctx.fillStyle = '#666';
+  ctx.fillStyle = '#78716c';
   for (var fb = 0; fb < 3; fb++) {
     var ba = fanAngle + fb * (Math.PI * 2 / 3);
     ctx.save();
@@ -1141,7 +1141,7 @@ function drawSmokerScene(ts) {
   // Center hub
   ctx.beginPath();
   ctx.arc(0, 0, 3, 0, Math.PI * 2);
-  ctx.fillStyle = '#888';
+  ctx.fillStyle = '#a8a29e';
   ctx.fill();
 
   ctx.restore();
@@ -1167,19 +1167,19 @@ function drawSmokerScene(ts) {
   }
 
   // Fan label
-  ctx.fillStyle = S.fanOn ? '#64b4ff' : '#555';
+  ctx.fillStyle = S.fanOn ? '#64b4ff' : '#57534e';
   ctx.font = '8px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('FAN', fanX, fanY + fanR + 14);
 
   // --- Chimney ---
-  ctx.fillStyle = '#333';
+  ctx.fillStyle = '#292524';
   ctx.fillRect(chimneyX, chimneyY, chimneyW, chimneyH);
-  ctx.strokeStyle = '#555';
+  ctx.strokeStyle = '#57534e';
   ctx.lineWidth = 1;
   ctx.strokeRect(chimneyX, chimneyY, chimneyW, chimneyH);
   // Chimney cap
-  ctx.fillStyle = '#444';
+  ctx.fillStyle = '#44403c';
   ctx.fillRect(chimneyX - 3, chimneyY, chimneyW + 6, 4);
 
   // Smoke particles - spawn from chimney
@@ -1204,7 +1204,7 @@ function drawSmokerScene(ts) {
 
   // --- Thermometer ---
   // Outer tube
-  ctx.fillStyle = '#222';
+  ctx.fillStyle = '#1c1917';
   ctx.beginPath();
   ctx.moveTo(thermX, thermY + 4);
   ctx.arcTo(thermX, thermY, thermX + thermW, thermY, 4);
@@ -1214,7 +1214,7 @@ function drawSmokerScene(ts) {
   ctx.arcTo(thermX, thermY + thermH, thermX, thermY, 4);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = '#555';
+  ctx.strokeStyle = '#57534e';
   ctx.lineWidth = 1;
   ctx.stroke();
 
@@ -1226,9 +1226,9 @@ function drawSmokerScene(ts) {
 
   // Mercury color: blue < 150, orange 150-400, red > 400
   var mercColor;
-  if (tempClamped < 150) mercColor = '#3498db';
-  else if (tempClamped > 400) mercColor = '#e74c3c';
-  else mercColor = '#ff6b35';
+  if (tempClamped < 150) mercColor = '#38bdf8';
+  else if (tempClamped > 400) mercColor = '#ef4444';
+  else mercColor = '#e8842c';
 
   ctx.fillStyle = mercColor;
   ctx.fillRect(thermX + 3, mercuryY, thermW - 6, mercuryH);
@@ -1273,7 +1273,7 @@ function drawSmokerScene(ts) {
   }
 
   // --- Labels ---
-  ctx.fillStyle = '#666';
+  ctx.fillStyle = '#78716c';
   ctx.font = '8px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('FIREPOT', firepotX + firepotW / 2, firepotY + firepotH + 12);
@@ -1289,16 +1289,16 @@ function drawPidSpring(ts) {
   var ctx = c.ctx, W = c.W, H = c.H;
   var S = pidSceneState;
 
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = '#0c0a09';
   ctx.fillRect(0, 0, W, H);
 
   // Title
-  ctx.fillStyle = '#3498db';
+  ctx.fillStyle = '#38bdf8';
   ctx.font = 'bold 11px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('P = Spring', W / 2, 16);
 
-  ctx.fillStyle = '#666';
+  ctx.fillStyle = '#78716c';
   ctx.font = '9px -apple-system, sans-serif';
   ctx.fillText('How far off?', W / 2, 28);
 
@@ -1321,9 +1321,9 @@ function drawPidSpring(ts) {
 
   // Spring color: green (small error) -> orange -> red (large error)
   var springColor;
-  if (errAbs < 3) springColor = '#2ecc71';
-  else if (errAbs < 10) springColor = '#ff6b35';
-  else springColor = '#e74c3c';
+  if (errAbs < 3) springColor = '#4ade80';
+  else if (errAbs < 10) springColor = '#e8842c';
+  else springColor = '#ef4444';
 
   // Draw spring (zigzag line)
   var leftX = Math.min(nowX, targetX);
@@ -1345,7 +1345,7 @@ function drawPidSpring(ts) {
   ctx.stroke();
 
   // NOW endpoint
-  ctx.fillStyle = '#ff6b35';
+  ctx.fillStyle = '#e8842c';
   ctx.beginPath();
   ctx.arc(nowX, cy, 6, 0, Math.PI * 2);
   ctx.fill();
@@ -1353,24 +1353,24 @@ function drawPidSpring(ts) {
   ctx.font = 'bold 8px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('NOW', nowX, cy + 18);
-  ctx.fillStyle = '#ff6b35';
+  ctx.fillStyle = '#e8842c';
   ctx.font = '9px SF Mono, Consolas, monospace';
   ctx.fillText(S.temp.toFixed(0) + '\u00B0', nowX, cy - 12);
 
   // TARGET endpoint
-  ctx.fillStyle = '#2ecc71';
+  ctx.fillStyle = '#4ade80';
   ctx.beginPath();
   ctx.arc(targetX, cy, 6, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 8px -apple-system, sans-serif';
   ctx.fillText('TARGET', targetX, cy + 18);
-  ctx.fillStyle = '#2ecc71';
+  ctx.fillStyle = '#4ade80';
   ctx.font = '9px SF Mono, Consolas, monospace';
   ctx.fillText(S.setpoint.toFixed(0) + '\u00B0', targetX, cy - 12);
 
   // P value
-  ctx.fillStyle = '#3498db';
+  ctx.fillStyle = '#38bdf8';
   ctx.font = 'bold 12px SF Mono, Consolas, monospace';
   ctx.textAlign = 'center';
   ctx.fillText('P = ' + S.p.toFixed(3), W / 2, H - 8);
@@ -1386,16 +1386,16 @@ function drawPidBucket(ts) {
   var S = pidSceneState;
   var t = ts / 1000;
 
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = '#0c0a09';
   ctx.fillRect(0, 0, W, H);
 
   // Title
-  ctx.fillStyle = '#2ecc71';
+  ctx.fillStyle = '#4ade80';
   ctx.font = 'bold 11px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('I = Bucket', W / 2, 16);
 
-  ctx.fillStyle = '#666';
+  ctx.fillStyle = '#78716c';
   ctx.font = '9px -apple-system, sans-serif';
   ctx.fillText('Steady offset fix', W / 2, 28);
 
@@ -1428,8 +1428,8 @@ function drawPidBucket(ts) {
 
     // Water gradient
     var wGrad = ctx.createLinearGradient(0, waterY, 0, by);
-    wGrad.addColorStop(0, 'rgba(46, 204, 113, 0.4)');
-    wGrad.addColorStop(1, 'rgba(46, 204, 113, 0.7)');
+    wGrad.addColorStop(0, 'rgba(74, 222, 128, 0.4)');
+    wGrad.addColorStop(1, 'rgba(74, 222, 128, 0.7)');
     ctx.fillStyle = wGrad;
     ctx.beginPath();
     ctx.moveTo(wl, waterY);
@@ -1449,9 +1449,9 @@ function drawPidBucket(ts) {
     // Warning glow when >80% full
     if (fillPct > 0.8) {
       ctx.save();
-      ctx.shadowColor = 'rgba(231, 76, 60, 0.5)';
+      ctx.shadowColor = 'rgba(239, 68, 68, 0.5)';
       ctx.shadowBlur = 10;
-      ctx.strokeStyle = '#e74c3c';
+      ctx.strokeStyle = '#ef4444';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(tl, bucketY);
@@ -1464,7 +1464,7 @@ function drawPidBucket(ts) {
   }
 
   // Bucket outline
-  ctx.strokeStyle = '#666';
+  ctx.strokeStyle = '#78716c';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(tl, bucketY);
@@ -1477,7 +1477,7 @@ function drawPidBucket(ts) {
   var balY = bucketY + bucketH * 0.5;
   var balL = bl + (tl - bl) * 0.5;
   var balR = br + (tr - br) * 0.5;
-  ctx.strokeStyle = '#888';
+  ctx.strokeStyle = '#a8a29e';
   ctx.lineWidth = 1;
   ctx.setLineDash([3, 3]);
   ctx.beginPath();
@@ -1485,7 +1485,7 @@ function drawPidBucket(ts) {
   ctx.lineTo(balR, balY);
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = '#888';
+  ctx.fillStyle = '#a8a29e';
   ctx.font = '7px -apple-system, sans-serif';
   ctx.textAlign = 'right';
   ctx.fillText('balanced', balL - 3, balY + 3);
@@ -1496,14 +1496,14 @@ function drawPidBucket(ts) {
     var dropX = W / 2 + Math.sin(t * 1.5) * 5;
     var dropY = bucketY - 12 + dropPhase * 18;
     var dropAlpha = 1 - dropPhase;
-    ctx.fillStyle = 'rgba(46, 204, 113, ' + dropAlpha.toFixed(2) + ')';
+    ctx.fillStyle = 'rgba(74, 222, 128, ' + dropAlpha.toFixed(2) + ')';
     ctx.beginPath();
     ctx.arc(dropX, dropY, 2, 0, Math.PI * 2);
     ctx.fill();
   }
 
   // I value
-  ctx.fillStyle = '#2ecc71';
+  ctx.fillStyle = '#4ade80';
   ctx.font = 'bold 12px SF Mono, Consolas, monospace';
   ctx.textAlign = 'center';
   ctx.fillText('I = ' + S.i.toFixed(3), W / 2, H - 8);
@@ -1518,16 +1518,16 @@ function drawPidSpeedo(ts) {
   var ctx = c.ctx, W = c.W, H = c.H;
   var S = pidSceneState;
 
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = '#0c0a09';
   ctx.fillRect(0, 0, W, H);
 
   // Title
-  ctx.fillStyle = '#ff6b35';
+  ctx.fillStyle = '#e8842c';
   ctx.font = 'bold 11px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('D = Speed', W / 2, 16);
 
-  ctx.fillStyle = '#666';
+  ctx.fillStyle = '#78716c';
   ctx.font = '9px -apple-system, sans-serif';
   ctx.fillText('Rate of change', W / 2, 28);
 
@@ -1540,9 +1540,9 @@ function drawPidSpeedo(ts) {
   var startA = Math.PI;
   var endA = 0;
   var zoneAngles = [
-    { a1: Math.PI, a2: Math.PI * 0.7, color: '#3498db' },       // COOLING
-    { a1: Math.PI * 0.7, a2: Math.PI * 0.3, color: '#2ecc71' }, // STABLE
-    { a1: Math.PI * 0.3, a2: 0, color: '#e74c3c' }              // HEATING
+    { a1: Math.PI, a2: Math.PI * 0.7, color: '#38bdf8' },       // COOLING
+    { a1: Math.PI * 0.7, a2: Math.PI * 0.3, color: '#4ade80' }, // STABLE
+    { a1: Math.PI * 0.3, a2: 0, color: '#ef4444' }              // HEATING
   ];
 
   ctx.lineWidth = 6;
@@ -1557,11 +1557,11 @@ function drawPidSpeedo(ts) {
   // Zone labels
   ctx.font = '7px -apple-system, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#3498db';
+  ctx.fillStyle = '#38bdf8';
   ctx.fillText('COOL', cx - gaugeR * 0.7, cy + 14);
-  ctx.fillStyle = '#2ecc71';
+  ctx.fillStyle = '#4ade80';
   ctx.fillText('STABLE', cx, cy - gaugeR + 18);
-  ctx.fillStyle = '#e74c3c';
+  ctx.fillStyle = '#ef4444';
   ctx.fillText('HEAT', cx + gaugeR * 0.7, cy + 14);
 
   // Needle: D value maps to angle
@@ -1593,7 +1593,7 @@ function drawPidSpeedo(ts) {
   ctx.stroke();
 
   // Needle tip
-  ctx.fillStyle = '#ff6b35';
+  ctx.fillStyle = '#e8842c';
   ctx.beginPath();
   ctx.arc(gaugeR - 6, 0, 3, 0, Math.PI * 2);
   ctx.fill();
@@ -1601,7 +1601,7 @@ function drawPidSpeedo(ts) {
   ctx.restore();
 
   // Center pivot
-  ctx.fillStyle = '#888';
+  ctx.fillStyle = '#a8a29e';
   ctx.beginPath();
   ctx.arc(cx, cy, 4, 0, Math.PI * 2);
   ctx.fill();
@@ -1614,13 +1614,13 @@ function drawPidSpeedo(ts) {
   else if (dClamped > 0.01) rateLabel = 'Heating';
   else rateLabel = 'Stable';
 
-  ctx.fillStyle = '#888';
+  ctx.fillStyle = '#a8a29e';
   ctx.font = '9px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(rateLabel, cx, cy + gaugeR * 0.2);
 
   // D value
-  ctx.fillStyle = '#ff6b35';
+  ctx.fillStyle = '#e8842c';
   ctx.font = 'bold 12px SF Mono, Consolas, monospace';
   ctx.fillText('D = ' + S.d.toFixed(3), W / 2, H - 8);
 }
@@ -1635,17 +1635,17 @@ function drawFeedbackLoop(ts) {
   var S = pidSceneState;
   var t = ts / 1000;
 
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = '#0c0a09';
   ctx.fillRect(0, 0, W, H);
 
   // Node positions (evenly spaced)
   var nodes = [
-    { label: 'TARGET', value: S.setpoint.toFixed(0) + '\u00B0', color: '#2ecc71' },
-    { label: 'ERROR', value: S.error.toFixed(1) + '\u00B0', color: S.error > 0 ? '#e74c3c' : '#3498db' },
-    { label: 'PID', value: '', color: '#888' },
-    { label: 'OUTPUT', value: S.output.toFixed(0) + '%', color: '#ff6b35' },
-    { label: 'SMOKER', value: '', color: '#666' },
-    { label: 'TEMP', value: S.temp.toFixed(0) + '\u00B0', color: '#ff6b35' }
+    { label: 'TARGET', value: S.setpoint.toFixed(0) + '\u00B0', color: '#4ade80' },
+    { label: 'ERROR', value: S.error.toFixed(1) + '\u00B0', color: S.error > 0 ? '#ef4444' : '#38bdf8' },
+    { label: 'PID', value: '', color: '#a8a29e' },
+    { label: 'OUTPUT', value: S.output.toFixed(0) + '%', color: '#e8842c' },
+    { label: 'SMOKER', value: '', color: '#78716c' },
+    { label: 'TEMP', value: S.temp.toFixed(0) + '\u00B0', color: '#e8842c' }
   ];
 
   var margin = 20;
@@ -1660,7 +1660,7 @@ function drawFeedbackLoop(ts) {
     var x2 = margin + (ni + 1) * nodeSpacing - nodeR - 2;
 
     // Arrow line
-    ctx.strokeStyle = '#444';
+    ctx.strokeStyle = '#44403c';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(x1, cy);
@@ -1668,7 +1668,7 @@ function drawFeedbackLoop(ts) {
     ctx.stroke();
 
     // Arrowhead
-    ctx.fillStyle = '#444';
+    ctx.fillStyle = '#44403c';
     ctx.beginPath();
     ctx.moveTo(x2, cy);
     ctx.lineTo(x2 - 5, cy - 3);
@@ -1703,7 +1703,7 @@ function drawFeedbackLoop(ts) {
     ctx.stroke();
 
     // Label above
-    ctx.fillStyle = '#888';
+    ctx.fillStyle = '#a8a29e';
     ctx.font = '7px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(n.label, nx, cy - 10);
@@ -1721,7 +1721,7 @@ function drawFeedbackLoop(ts) {
   var errX = margin + 1 * nodeSpacing;
   var fbY = cy + 28;
 
-  ctx.strokeStyle = '#555';
+  ctx.strokeStyle = '#57534e';
   ctx.lineWidth = 1;
   ctx.setLineDash([3, 3]);
   ctx.beginPath();
@@ -1733,7 +1733,7 @@ function drawFeedbackLoop(ts) {
   ctx.setLineDash([]);
 
   // Feedback arrow head
-  ctx.fillStyle = '#555';
+  ctx.fillStyle = '#57534e';
   ctx.beginPath();
   ctx.moveTo(errX, cy + nodeR + 2);
   ctx.lineTo(errX - 3, cy + nodeR + 7);
@@ -1742,7 +1742,7 @@ function drawFeedbackLoop(ts) {
   ctx.fill();
 
   // Feedback label
-  ctx.fillStyle = '#555';
+  ctx.fillStyle = '#57534e';
   ctx.font = '7px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('feedback', (tempX + errX) / 2, fbY - 2);
@@ -1766,7 +1766,7 @@ function drawFeedbackLoop(ts) {
     }
     ctx.beginPath();
     ctx.arc(fdx, fdy, 1.5, 0, Math.PI * 2);
-    ctx.fillStyle = hexAlpha('#555', 0.5);
+    ctx.fillStyle = hexAlpha('#57534e', 0.5);
     ctx.fill();
   }
 
@@ -1811,12 +1811,12 @@ function drawFeedbackLoop(ts) {
   ctx.arcTo(bubbleX - msgW / 2, bubbleY + bubbleH / 2, bubbleX - msgW / 2, bubbleY - bubbleH / 2, 4);
   ctx.arcTo(bubbleX - msgW / 2, bubbleY - bubbleH / 2, bubbleX + msgW / 2, bubbleY - bubbleH / 2, 4);
   ctx.fill();
-  ctx.strokeStyle = '#555';
+  ctx.strokeStyle = '#57534e';
   ctx.lineWidth = 0.5;
   ctx.stroke();
 
   // Bubble text
-  ctx.fillStyle = '#ccc';
+  ctx.fillStyle = '#d6d3d1';
   ctx.textAlign = 'center';
   ctx.fillText(msg, bubbleX, bubbleY + 3);
 }
@@ -1836,11 +1836,11 @@ function drawPidChart() {
   var ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
 
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = '#0c0a09';
   ctx.fillRect(0, 0, W, H);
 
   if (pidHistory.length < 2) {
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = '#78716c';
     ctx.font = '13px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Collecting PID data\u2026', W / 2, H / 2);
@@ -1858,7 +1858,7 @@ function drawPidChart() {
   // Filter to visible range
   var vis = pidHistory.filter(function(s) { return s.t >= tMin; });
   if (vis.length < 2) {
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = '#78716c';
     ctx.font = '13px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Collecting PID data\u2026', W / 2, H / 2);
@@ -1872,12 +1872,12 @@ function drawPidChart() {
   function ty(v) { return padT + (1 - (v - yMin) / (yMax - yMin)) * gH; }
 
   // Grid
-  ctx.strokeStyle = '#222';
+  ctx.strokeStyle = '#1c1917';
   ctx.lineWidth = 0.5;
   for (var v = 0; v <= 100; v += 25) {
     var y = ty(v);
     ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
-    ctx.fillStyle = '#666';
+    ctx.fillStyle = '#78716c';
     ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText(v + '%', padL - 4, y + 3);
@@ -1889,7 +1889,7 @@ function drawPidChart() {
   for (var t = Math.ceil(tMin / xStep) * xStep; t <= tMax; t += xStep) {
     var x = tx(t);
     ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + gH); ctx.stroke();
-    ctx.fillStyle = '#666';
+    ctx.fillStyle = '#78716c';
     ctx.font = '10px -apple-system, sans-serif';
     var ago = tMax - t;
     ctx.fillText(ago < 5 ? 'now' : fmtAgo(ago), x, H - 4);
@@ -1918,7 +1918,7 @@ function drawPidChart() {
   // Map them: value * 100 + 50 so that 0 maps to 50% on chart
   ctx.globalAlpha = 0.7;
   // P (blue)
-  ctx.strokeStyle = '#3498db';
+  ctx.strokeStyle = '#38bdf8';
   ctx.lineWidth = 1.2;
   ctx.beginPath();
   var started = false;
@@ -1931,7 +1931,7 @@ function drawPidChart() {
   ctx.stroke();
 
   // I (green)
-  ctx.strokeStyle = '#2ecc71';
+  ctx.strokeStyle = '#4ade80';
   ctx.beginPath();
   started = false;
   for (var i = 0; i < vis.length; i++) {
@@ -1943,7 +1943,7 @@ function drawPidChart() {
   ctx.stroke();
 
   // D (orange)
-  ctx.strokeStyle = '#ff6b35';
+  ctx.strokeStyle = '#e8842c';
   ctx.beginPath();
   started = false;
   for (var i = 0; i < vis.length; i++) {
