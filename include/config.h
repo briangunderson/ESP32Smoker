@@ -100,7 +100,7 @@
 
 // Lid-Open Detection (freezes PID integral during lid events)
 #define ENABLE_LID_DETECTION           true
-#define LID_OPEN_DERIVATIVE_THRESHOLD  -2.0    // °F/s - rate of temp drop to trigger
+#define LID_OPEN_DERIVATIVE_THRESHOLD  -10.0   // °F/s - rate of temp drop to trigger
 #define LID_CLOSE_RECOVERY_TIME        30000   // ms - stable before declaring lid closed
 #define LID_OPEN_MIN_DURATION          5000    // ms - minimum to avoid false triggers
 
@@ -118,7 +118,7 @@
 // Startup/Shutdown Behavior
 #define IGNITER_PREHEAT_TIME     60000 // ms to preheat igniter before starting
 #define FAN_STARTUP_DELAY        5000  // ms to delay fan after igniter
-#define STARTUP_TIMEOUT          180000 // ms before startup failure
+#define STARTUP_TIMEOUT          30000 // ms before startup failure
 #ifndef BOOT_GRACE_PERIOD_MS
 #define BOOT_GRACE_PERIOD_MS     10000  // ms to ignore start commands after boot
 #endif
