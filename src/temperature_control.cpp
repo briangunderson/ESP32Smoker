@@ -183,7 +183,7 @@ void TemperatureController::shutdown() {
   _relayControl->allOff();
 
   if (ENABLE_SERIAL_DEBUG) {
-    Serial.println("[TEMP] Shutdown commanded");
+    Serial.println("[TEMP] Emergency stop commanded");
   }
 }
 
@@ -217,7 +217,7 @@ const char* TemperatureController::getStateName(void) {
   case STATE_COOLDOWN:
     return "Cooling Down";
   case STATE_SHUTDOWN:
-    return "Shutdown";
+    return "Stopped";
   case STATE_ERROR:
     return "Error";
   case STATE_REIGNITE:
@@ -649,7 +649,7 @@ const char* TemperatureController::stateToString(ControllerState state) {
   case STATE_COOLDOWN:
     return "COOLDOWN";
   case STATE_SHUTDOWN:
-    return "SHUTDOWN";
+    return "STOPPED";
   case STATE_ERROR:
     return "ERROR";
   case STATE_REIGNITE:

@@ -57,7 +57,7 @@ Get current system status.
 |-------|------|------|-------------|
 | `temp` | float | °F | Current temperature |
 | `setpoint` | float | °F | Target temperature |
-| `state` | string | - | Current state (Idle, Starting, Running, Cooling Down, Shutdown, Error) |
+| `state` | string | - | Current state (Idle, Starting, Running, Cooling Down, Stopped, Error) |
 | `auger` | boolean | - | Auger relay state (true = ON) |
 | `fan` | boolean | - | Fan relay state (true = ON) |
 | `igniter` | boolean | - | Igniter relay state (true = ON) |
@@ -113,7 +113,7 @@ curl -X POST http://192.168.4.1/api/start \
 
 ### POST /api/stop
 
-Stop feeding pellets and initiate cooldown phase.
+End cook — stop feeding pellets and initiate cooldown phase.
 
 **Parameters:** None
 
@@ -140,13 +140,13 @@ curl -X POST http://192.168.4.1/api/stop
 **State Transition:**
 - Before: `Running`
 - After: `Cooling Down`
-- Then: `Shutdown` (when cool)
+- Then: `Stopped` (when cool)
 
 ---
 
 ### POST /api/shutdown
 
-Immediate shutdown of all systems.
+Emergency stop — immediately turn off all relays.
 
 **Parameters:** None
 
@@ -168,7 +168,7 @@ curl -X POST http://192.168.4.1/api/shutdown
 - All relays: OFF immediately
 
 **State Transition:**
-- Any state → `Shutdown` → `Idle`
+- Any state → `Stopped` → `Idle`
 
 ---
 
@@ -242,7 +242,7 @@ for i in {1..180}; do
   sleep 1
 done
 
-# 3. Stop when ready
+# 3. End cook when ready
 curl -X POST http://192.168.4.1/api/stop
 ```
 
@@ -262,7 +262,7 @@ if (( $(echo "$TEMP < 200" | bc -l) )); then
 fi
 ```
 
-### Graceful Shutdown
+### End Cook (Graceful Cooldown)
 
 ```bash
 # Initiate cooldown

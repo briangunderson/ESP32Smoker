@@ -128,10 +128,12 @@ void MQTTClient::subscribe() {
   String startTopic = String(_rootTopic) + "/command/start";
   String stopTopic = String(_rootTopic) + "/command/stop";
   String setpointTopic = String(_rootTopic) + "/command/setpoint";
+  String emergencyStopTopic = String(_rootTopic) + "/command/emergency_stop";
 
   _mqttClient.subscribe(startTopic.c_str());
   _mqttClient.subscribe(stopTopic.c_str());
   _mqttClient.subscribe(setpointTopic.c_str());
+  _mqttClient.subscribe(emergencyStopTopic.c_str());
 
   _subscribed = true;
   _subscribeTime = millis();
@@ -192,7 +194,12 @@ void MQTTClient::handleMessage(char* topic, byte* payload,
   } else if (command == "stop") {
     _controller->stop();
     if (ENABLE_SERIAL_DEBUG) {
-      Serial.println("[MQTT] Command: STOP");
+      Serial.println("[MQTT] Command: END_COOK");
+    }
+  } else if (command == "emergency_stop") {
+    _controller->shutdown();
+    if (ENABLE_SERIAL_DEBUG) {
+      Serial.println("[MQTT] Command: EMERGENCY_STOP");
     }
   } else if (command == "setpoint") {
     if (copyLen > 0) {
@@ -521,10 +528,10 @@ void MQTTClient::publishDiscovery() {
       TEMP_MIN_SETPOINT, TEMP_MAX_SETPOINT, device, avail);
   publishDiscoveryEntity("number", "setpoint", payload);
 
-  // --- BUTTONS (stop / shutdown) ---
+  // --- BUTTONS (end cook / emergency stop) ---
 
   snprintf(payload, sizeof(payload),
-      "{\"name\":\"Stop\","
+      "{\"name\":\"End Cook\","
       "\"cmd_t\":\"%s/command/stop\","
       "\"uniq_id\":\"gundergrill_stop\","
       "\"ic\":\"mdi:stop\","
@@ -532,12 +539,12 @@ void MQTTClient::publishDiscovery() {
   publishDiscoveryEntity("button", "stop", payload);
 
   snprintf(payload, sizeof(payload),
-      "{\"name\":\"Shutdown\","
-      "\"cmd_t\":\"%s/command/stop\","
-      "\"uniq_id\":\"gundergrill_shutdown\","
-      "\"ic\":\"mdi:power\","
+      "{\"name\":\"Emergency Stop\","
+      "\"cmd_t\":\"%s/command/emergency_stop\","
+      "\"uniq_id\":\"gundergrill_emergency_stop\","
+      "\"ic\":\"mdi:alert-octagon\","
       "%s,%s}", _rootTopic, device, avail);
-  publishDiscoveryEntity("button", "shutdown", payload);
+  publishDiscoveryEntity("button", "emergency_stop", payload);
 
   if (ENABLE_SERIAL_DEBUG) {
     Serial.println("[MQTT] Home Assistant discovery published");

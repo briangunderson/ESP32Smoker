@@ -272,14 +272,14 @@ views:
                 - background: >
                     [[[
                       let state = states['sensor.gundergrill_state'].state;
-                      return (state === 'Idle' || state === 'Shutdown')
+                      return (state === 'Idle' || state === 'Stopped')
                         ? 'linear-gradient(135deg, #2E7D32, #4CAF50)'
                         : 'var(--card-background-color)';
                     ]]]
                 - color: >
                     [[[
                       let state = states['sensor.gundergrill_state'].state;
-                      return (state === 'Idle' || state === 'Shutdown')
+                      return (state === 'Idle' || state === 'Stopped')
                         ? 'white' : 'var(--disabled-text-color)';
                     ]]]
                 - border-radius: 12px
@@ -290,15 +290,15 @@ views:
                 - font-size: 16px
                 - letter-spacing: 2px
 
-          # Stop button
+          # End Cook button
           - type: custom:button-card
-            name: STOP
+            name: END COOK
             icon: mdi:stop-circle
             tap_action:
               action: perform-action
               perform_action: script.gundergrill_stop
               confirmation:
-                text: "Stop the smoker and begin cooldown?"
+                text: "End the cook and begin cooldown?"
             styles:
               card:
                 - height: 80px
@@ -321,6 +321,39 @@ views:
                 - width: 28px
               name:
                 - font-size: 16px
+                - letter-spacing: 2px
+
+          # Emergency Stop button
+          - type: custom:button-card
+            name: EMERGENCY STOP
+            icon: mdi:alert-octagon
+            tap_action:
+              action: perform-action
+              perform_action: script.gundergrill_emergency_stop
+              confirmation:
+                text: "Emergency stop? All relays will turn off immediately."
+            styles:
+              card:
+                - height: 60px
+                - background: >
+                    [[[
+                      let state = states['sensor.gundergrill_state'].state;
+                      return (state !== 'Idle' && state !== 'Stopped' && state !== 'Error')
+                        ? 'linear-gradient(135deg, #B71C1C, #D32F2F)'
+                        : 'var(--card-background-color)';
+                    ]]]
+                - color: >
+                    [[[
+                      let state = states['sensor.gundergrill_state'].state;
+                      return (state !== 'Idle' && state !== 'Stopped' && state !== 'Error')
+                        ? 'white' : 'var(--disabled-text-color)';
+                    ]]]
+                - border-radius: 12px
+                - font-weight: bold
+              icon:
+                - width: 24px
+              name:
+                - font-size: 14px
                 - letter-spacing: 2px
 
           # Quick-start presets

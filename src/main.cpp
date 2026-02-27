@@ -156,9 +156,9 @@ void handleDisplayButtons() {
     controller->startSmoking(controller->getSetpoint());
   }
 
-  // Button 2: Stop/Cooldown
+  // Button 2: End Cook (Cooldown)
   if (display->isButtonPressed(BTN_STOP)) {
-    Serial.println("[BTN] Stop button pressed");
+    Serial.println("[BTN] End Cook button pressed");
     controller->stop();
   }
 
@@ -225,7 +225,7 @@ void handleEncoder() {
     }
   }
 
-  // Handle button press: toggle start/stop
+  // Handle button press: toggle start/end cook
   if (encoder->wasButtonPressed()) {
     ControllerState state = controller->getState();
     if (state == STATE_IDLE || state == STATE_SHUTDOWN) {
@@ -233,7 +233,7 @@ void handleEncoder() {
       Serial.println("[ENCODER] Button: Starting smoker");
     } else if (state == STATE_RUNNING || state == STATE_STARTUP) {
       controller->stop();
-      Serial.println("[ENCODER] Button: Stopping smoker");
+      Serial.println("[ENCODER] Button: Ending cook");
     }
   }
 

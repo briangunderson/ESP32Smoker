@@ -134,7 +134,7 @@ function updateUI(s) {
   }
 
   // Buttons
-  var running = state !== 'Idle' && state !== 'Shutdown' && state !== 'Error';
+  var running = state !== 'Idle' && state !== 'Stopped' && state !== 'Error';
   document.getElementById('btn-start').disabled = running;
   document.getElementById('btn-stop').disabled = !running;
 
@@ -161,7 +161,7 @@ function updateUI(s) {
 }
 
 // --- Temperature Graph ---
-var STATE_NAMES = ['Idle','Startup','Running','Cooldown','Shutdown','Error','Reignite'];
+var STATE_NAMES = ['Idle','Startup','Running','Cooldown','Stopped','Error','Reignite'];
 var STATE_COLORS = ['#57534e','#e8842c','#4ade80','#38bdf8','#facc15','#ef4444','#d4621a'];
 
 async function fetchHistory() {
@@ -446,13 +446,13 @@ async function startSmoking() {
 
 async function stopSmoking() {
   var r = await post('/stop');
-  if (r) toast('Stopping...', 'ok');
+  if (r) toast('Ending cook...', 'ok');
 }
 
 async function doShutdown() {
-  if (!confirm('Shutdown the smoker?')) return;
+  if (!confirm('Emergency stop? All relays will turn off immediately.')) return;
   var r = await post('/shutdown');
-  if (r) toast('Shutting down', 'info');
+  if (r) toast('Emergency stop activated', 'info');
 }
 
 function adjSetpoint(delta) {
@@ -1829,7 +1829,7 @@ function drawFeedbackLoop(ts) {
     msg = 'Warming up...';
   } else if (S.state === 'Idle') {
     msg = 'Ready to smoke!';
-  } else if (S.state === 'Cooldown' || S.state === 'Shutdown') {
+  } else if (S.state === 'Cooldown' || S.state === 'Stopped') {
     msg = 'Cooling down...';
   } else if (S.state === 'Error') {
     msg = 'Error! Check smoker.';

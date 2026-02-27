@@ -81,7 +81,7 @@ The ESP32 firmware publishes MQTT Discovery messages on boot. Home Assistant aut
 |-----------|-------------|
 | `sensor.gundergrill_temperature` | Current grill temperature (°F) |
 | `sensor.gundergrill_setpoint` | Target temperature (°F) |
-| `sensor.gundergrill_state` | State machine (Idle/Startup/Running/Cooldown/Shutdown/Error) |
+| `sensor.gundergrill_state` | State machine (Idle/Startup/Running/Cooldown/Stopped/Error) |
 | `sensor.gundergrill_pid_output` | PID auger duty cycle (%) |
 | `sensor.gundergrill_pid_proportional` | PID P term |
 | `sensor.gundergrill_pid_integral` | PID I term |
@@ -101,8 +101,8 @@ The ESP32 firmware publishes MQTT Discovery messages on boot. Home Assistant aut
 | Entity ID | Description |
 |-----------|-------------|
 | `number.gundergrill_target_temperature` | Setpoint slider (150-500°F) |
-| `button.gundergrill_stop` | Stop smoking |
-| `button.gundergrill_shutdown` | Emergency shutdown |
+| `button.gundergrill_stop` | End Cook (cooldown) |
+| `button.gundergrill_emergency_stop` | Emergency Stop (all relays off) |
 
 **Template Sensors (from package):**
 | Entity ID | Description |
@@ -125,7 +125,8 @@ All entities show as "unavailable" in HA when the device is offline.
 | Topic | Payload | Action |
 |-------|---------|--------|
 | `home/smoker/command/start` | Temperature (e.g., `"225"`) | Start smoking at given temp |
-| `home/smoker/command/stop` | Any | Stop, begin cooldown |
+| `home/smoker/command/stop` | Any | End cook, begin cooldown |
+| `home/smoker/command/emergency_stop` | Any | Emergency stop (all relays off immediately) |
 | `home/smoker/command/setpoint` | Temperature (e.g., `"250"`) | Update target temp |
 
 ## Dashboard Views

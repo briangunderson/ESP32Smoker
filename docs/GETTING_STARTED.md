@@ -152,8 +152,8 @@ Edit `config.h` - all pins defined at top:
 ### Control
 - [ ] Start button → relays activate → State shows "Starting"
 - [ ] Temperature increases
-- [ ] Stop button → auger stops → state shows "Cooling Down"
-- [ ] Shutdown button → all relays off
+- [ ] End Cook button → auger stops → state shows "Cooling Down"
+- [ ] Emergency Stop button → all relays off
 
 ### MQTT (if configured)
 - [ ] Subscribe to `home/smoker/sensor/temperature`

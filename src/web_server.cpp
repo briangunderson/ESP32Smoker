@@ -123,7 +123,7 @@ void WebServer::setupRoutes() {
     request->send(200, "application/json", "{\"ok\":true}");
 
     if (ENABLE_SERIAL_DEBUG) {
-      Serial.println("[WEB] Stop command received");
+      Serial.println("[WEB] End Cook command received");
     }
   });
 
@@ -134,7 +134,7 @@ void WebServer::setupRoutes() {
                request->send(200, "application/json", "{\"ok\":true}");
 
                if (ENABLE_SERIAL_DEBUG) {
-                 Serial.println("[WEB] Shutdown command received");
+                 Serial.println("[WEB] Emergency Stop command received");
                }
              });
 

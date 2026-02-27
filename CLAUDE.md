@@ -98,7 +98,7 @@ Only skip OTA upload if there's a technical reason preventing it:
 
 ### Temperature Control State Machine
 ```
-IDLE → STARTUP → RUNNING → COOLDOWN → SHUTDOWN → IDLE
+IDLE → STARTUP → RUNNING → COOLDOWN → STOPPED → IDLE
                     ↓  ↑
                  REIGNITE (auto-recovery, max 3 attempts)
                     ↓
@@ -106,6 +106,7 @@ IDLE → STARTUP → RUNNING → COOLDOWN → SHUTDOWN → IDLE
 ```
 
 **States**: IDLE(0), STARTUP(1), RUNNING(2), COOLDOWN(3), SHUTDOWN(4), ERROR(5), REIGNITE(6)
+> Note: Internal enum is `STATE_SHUTDOWN` but display name (from `getStateName()`) is **"Stopped"**
 
 **STARTUP sequence**:
 1. Pre-heat igniter (60s)
@@ -186,7 +187,7 @@ The TM1638 module provides a physical interface with:
 
 ### Button Controls (Left to Right)
 1. **Start** - Begin smoking sequence (starts at current setpoint)
-2. **Stop** - Stop feeding pellets, initiate cooldown
+2. **End Cook** - End cook, initiate cooldown
 3. **Temp Up** - Increase setpoint by 5°F (max 350°F)
 4. **Temp Down** - Decrease setpoint by 5°F (min 150°F)
 5. **Mode** - Reserved for future use (cycles display modes)
@@ -267,8 +268,8 @@ PID behavior: Integral accumulation is frozen while lid is open. Proportional an
 ### Normal Operation
 - `GET /api/status` - Current temp, setpoint, state, relay status, PID data (see below)
 - `POST /api/start` - Start smoking (optional: `{"temp": 250}`)
-- `POST /api/stop` - Stop feeding pellets, initiate cooldown
-- `POST /api/shutdown` - Full system shutdown
+- `POST /api/stop` - End cook (cooldown)
+- `POST /api/shutdown` - Emergency stop (all relays off immediately)
 - `POST /api/setpoint` - Update target temp: `{"temp": 225}`
 - `GET /api/history` - Temperature history for graph (compact array format)
 
@@ -316,7 +317,8 @@ PID behavior: Integral accumulation is frozen while lid is open. Proportional an
 
 ### Subscribed (commands)
 - `home/smoker/command/start` - Payload: temperature (float)
-- `home/smoker/command/stop` - Any payload
+- `home/smoker/command/stop` - End cook (any payload)
+- `home/smoker/command/emergency_stop` - Emergency stop (any payload)
 - `home/smoker/command/setpoint` - Payload: temperature (float)
 
 ## PID Tuning
@@ -406,7 +408,7 @@ Watch serial output for PID debugging (every 5 seconds during RUNNING):
 The PID integral term is saved to non-volatile storage (NVS) using the ESP32 `Preferences` library. This gives the PID a "warm start" on subsequent cooks, reaching steady-state faster.
 
 **How it works:**
-- When leaving RUNNING state (stop, cooldown, shutdown, or error), the integral value and setpoint are saved to NVS
+- When leaving RUNNING state (end cook, cooldown, emergency stop, or error), the integral value and setpoint are saved to NVS
 - During RUNNING, a periodic save occurs every 5 minutes (handles unexpected power loss)
 - When transitioning STARTUP → RUNNING, the saved integral is restored if the saved setpoint is within ±20°F of the current setpoint
 - If setpoints differ too much (e.g., saved at 225°F, now cooking at 300°F), the integral starts fresh at 0.0

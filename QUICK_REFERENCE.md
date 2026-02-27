@@ -79,7 +79,7 @@ pio device monitor --baud 115200
 
 ### Buttons (Left to Right)
 1. **Start** - Begin smoking
-2. **Stop** - Stop and cooldown
+2. **End Cook** - Stop and cooldown
 3. **Temp ▲** - Increase by 5°F
 4. **Temp ▼** - Decrease by 5°F
 5. **Mode** - Reserved
@@ -87,7 +87,7 @@ pio device monitor --baud 115200
 ## 🎯 State Machine
 
 ```
-START     →  STARTUP  →  RUNNING  →  COOLDOWN  →  SHUTDOWN  →  IDLE
+START     →  STARTUP  →  RUNNING  →  COOLDOWN  →  STOPPED   →  IDLE
 (0-60s)      (0-180s)   (normal)    (temp>100)   (relays off)
  preheat      heating    control     safety cool  final state
    + ─────────────────── ERROR STATE ────────────────┘
@@ -112,10 +112,10 @@ curl -X POST http://192.168.4.1/api/start \
   -H "Content-Type: application/json" \
   -d '{"temp": 225}'
 
-# Stop (cooldown)
+# End Cook (cooldown)
 curl -X POST http://192.168.4.1/api/stop
 
-# Shutdown
+# Emergency Stop
 curl -X POST http://192.168.4.1/api/shutdown
 
 # Set target temp
@@ -288,8 +288,8 @@ home/smoker/command/setpoint    → float (temp)
 | Large temperature display | Easy to read from distance |
 | Target temperature slider | Quick adjustments (150-350°F) |
 | Start button | Begin smoking session |
-| Stop button | Initiate cooldown |
-| Shutdown button | Emergency stop |
+| End Cook button | Initiate cooldown |
+| Emergency Stop button | Immediately turn off all relays |
 | State display | Know what system is doing |
 | Relay status lights | See which motors are running |
 | WiFi/MQTT indicators | Network status at a glance |

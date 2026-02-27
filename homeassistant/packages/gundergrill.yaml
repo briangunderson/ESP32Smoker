@@ -89,7 +89,7 @@ gundergrill:
             {% elif state == 'Startup' %}mdi:rocket-launch
             {% elif state == 'Running' %}mdi:fire
             {% elif state == 'Cooldown' %}mdi:snowflake
-            {% elif state == 'Shutdown' %}mdi:power
+            {% elif state == 'Stopped' %}mdi:power
             {% elif state == 'Error' %}mdi:alert-circle
             {% else %}mdi:help-circle
             {% endif %}
@@ -136,14 +136,24 @@ gundergrill:
             payload: "{{ states('input_number.gundergrill_start_temp') | int }}"
 
     gundergrill_stop:
-      alias: "GunderGrill - Stop (Cooldown)"
+      alias: "GunderGrill - End Cook"
       icon: mdi:stop
-      description: "Stop feeding pellets and begin cooldown"
+      description: "End the cook and begin cooldown"
       sequence:
         - action: mqtt.publish
           data:
             topic: "home/smoker/command/stop"
             payload: "stop"
+
+    gundergrill_emergency_stop:
+      alias: "GunderGrill - Emergency Stop"
+      icon: mdi:alert-octagon
+      description: "Immediately turn off all relays"
+      sequence:
+        - action: mqtt.publish
+          data:
+            topic: "home/smoker/command/emergency_stop"
+            payload: "emergency_stop"
 
     gundergrill_set_temp:
       alias: "GunderGrill - Set Temperature"

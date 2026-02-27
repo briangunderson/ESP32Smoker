@@ -77,7 +77,7 @@ The core control loop managing smoking sessions.
 
 **State Flow:**
 ```
-IDLE → STARTUP → RUNNING → COOLDOWN → SHUTDOWN → IDLE
+IDLE → STARTUP → RUNNING → COOLDOWN → STOPPED → IDLE
   ▲                 │                                 │
   │                 ▼                                 │
   └─────────── ERROR ◄────────────────────────────────┘
@@ -117,8 +117,8 @@ HTTP server and REST API for the web dashboard.
 **Endpoints:**
 - `GET /api/status` - Current system status
 - `POST /api/start` - Start smoking
-- `POST /api/stop` - Stop/cooldown
-- `POST /api/shutdown` - Emergency shutdown
+- `POST /api/stop` - End cook (cooldown)
+- `POST /api/shutdown` - Emergency stop
 - `POST /api/setpoint` - Update target temperature
 
 **Static Files:**
@@ -137,7 +137,8 @@ Network communication for Home Assistant integration.
 
 **Topics Subscribed:**
 - `home/smoker/command/start` - Start session
-- `home/smoker/command/stop` - Stop session
+- `home/smoker/command/stop` - End cook (cooldown)
+- `home/smoker/command/emergency_stop` - Emergency stop (all relays off)
 - `home/smoker/command/setpoint` - Update target
 
 ### 6. **TM1638 Display** (`tm1638_display.*`)
@@ -151,7 +152,7 @@ Physical user interface with dual 7-segment displays, LEDs, and buttons.
 
 **Button Functions:**
 - Button 1: **Start** - Begin smoking
-- Button 2: **Stop** - Stop and cooldown
+- Button 2: **End Cook** - End cook and cooldown
 - Button 3: **Temp Up** - Increase setpoint by 5°F
 - Button 4: **Temp Down** - Decrease setpoint by 5°F
 - Button 5: **Mode** - Reserved for future use
@@ -253,7 +254,7 @@ COOLDOWN STATE
     └─ Wait until temp drops or timeout
          │
          ▼
-    SHUTDOWN STATE
+    STOPPED STATE
          │
          └─ All relays OFF
             │

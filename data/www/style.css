@@ -96,7 +96,7 @@ body {
   border-color: rgba(239,68,68,.4);
   animation: pulse-badge 1.2s infinite;
 }
-.state-badge.shutdown {
+.state-badge.stopped {
   background: rgba(250,204,21,.1); color: var(--yellow);
   border-color: rgba(250,204,21,.3);
 }

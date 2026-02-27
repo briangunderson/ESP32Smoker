@@ -144,8 +144,8 @@ Key parameters to adjust:
 2. **Main Controls**
    - **Temperature Display**: Shows current and target temperature
    - **Start Button**: Begins smoking at set temperature
-   - **Stop Button**: Stops feeding pellets, cools down
-   - **Shutdown Button**: Full system shutdown
+   - **End Cook Button**: Stops feeding pellets, cools down
+   - **Emergency Stop Button**: Immediately turns off all relays
    - **Temperature Slider**: Adjust target in 1°F increments
 
 3. **Status Indicators**
@@ -209,10 +209,10 @@ Start smoking session.
 ```
 
 #### POST /api/stop
-Stop feeding pellets, initiate cooldown.
+End cook — stop feeding pellets, initiate cooldown.
 
 #### POST /api/shutdown
-Shutdown all systems.
+Emergency stop — immediately turn off all relays.
 
 #### POST /api/setpoint
 Update target temperature.
@@ -335,7 +335,7 @@ automation:
              │ Temp safe
              ▼
         ┌──────────┐
-        │ SHUTDOWN │
+        │ STOPPED  │
         └────┬─────┘
              │
              ▼
