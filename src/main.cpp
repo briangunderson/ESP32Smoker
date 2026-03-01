@@ -257,6 +257,10 @@ void initializeOTA() {
   // Set OTA password for security (defined in secrets.h)
   ArduinoOTA.setPassword(OTA_PASSWORD);
 
+  // Increase OTA timeout for unreliable WiFi (default 1000ms is too aggressive)
+  // With ping latency up to 500ms, we need headroom for data gaps
+  ArduinoOTA.setTimeout(10000);  // 10 seconds
+
   // Configure OTA callbacks
   ArduinoOTA.onStart([]() {
     String type = (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem";
@@ -286,8 +290,7 @@ void initializeOTA() {
   });
 
   ArduinoOTA.begin();
-  Serial.println("[OTA] Over-The-Air updates enabled");
-  Serial.println("[OTA] Over-The-Air updates configured");
+  Serial.println("[OTA] Over-The-Air updates enabled (timeout: 10s)");
 }
 
 // Safety check for HTTP OTA — returns true if safe to update
