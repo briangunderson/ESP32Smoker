@@ -4,8 +4,8 @@
 This is a complete, production-ready wood pellet smoker controller built on ESP32 with Arduino framework. It features real-time temperature control, web interface, and Home Assistant integration via MQTT.
 
 **Status**: Hardware working (PT1000 + 4300Ω ref on second MAX31865 board)
-**Version**: 1.4.0 (Reignite logic, lid detection, PID visualization, OTA auth)
-**Last Build**: February 13, 2026
+**Version**: 1.6.0 (System log viewer, perf metrics, generation script, button renames)
+**Last Build**: March 1, 2026
 **Product Name**: GunderGrill
 
 ## Quick Facts
@@ -85,6 +85,9 @@ Only skip OTA upload if there's a technical reason preventing it:
 - `docs/API.md` - REST API reference
 - `docs/DEVELOPER.md` - Build, release workflow, CI/CD pipeline
 - `hardware/WIRING_DIAGRAM.md` - Complete wiring guide
+
+### Build Tools (scripts/)
+- `scripts/generate_web_content.py` - Generates `include/web_content.h` from `data/www/` sources (HTML→raw string, CSS/JS→gzip byte arrays)
 
 ### Logging Infrastructure (logging/)
 - `logging/README.md` - Complete logging infrastructure documentation
@@ -272,6 +275,14 @@ PID behavior: Integral accumulation is frozen while lid is open. Proportional an
 - `POST /api/shutdown` - Emergency stop (all relays off immediately)
 - `POST /api/setpoint` - Update target temp: `{"temp": 225}`
 - `GET /api/history` - Temperature history for graph (compact array format)
+- `GET /api/logs` - System log entries (ring buffer, compact array format)
+- `GET /api/logs?since=N` - Incremental: only entries with sequence > N
+
+**`/api/logs` response format** (added in v1.6.0):
+```json
+{"logs":[[seq, uptime_secs, priority, "TAG", "message"], ...]}
+```
+Priority: 0=EMERG, 3=ERR, 4=WARN, 6=INFO, 7=DEBUG. Tags parsed from `[TAG]` prefix in log messages.
 
 **`/api/status` response includes PID object** (added in v1.4.0):
 ```json
@@ -705,6 +716,44 @@ The HA GunderGrill dashboard includes a "PID Analysis" view (4th view) with:
 - Mushroom cards: Lid open status, reignite attempts, PID output gauge
 - Live PID values entities card
 
+## System Log Viewer (v1.6.0)
+
+The web UI includes a "System Log" tab showing real-time log entries from the ESP32's ring buffer.
+
+### Architecture
+- **Firmware**: 64-entry ring buffer in `Logger` class (~6.4KB RAM), appended by `dualLog()`
+- **API**: `GET /api/logs?since=N` returns only entries newer than sequence N (incremental polling)
+- **Web UI**: Polls every 3 seconds (only when log tab active), filters by severity, auto-scrolls, max 500 DOM entries
+- **Tag parsing**: `[TAG]` prefix extracted from log messages (e.g., `[STATUS]`, `[PID]`, `[MAX31865]`)
+
+### Key Files
+- `include/config.h` — `ENABLE_LOG_RING`, `LOG_RING_SIZE`, `LOG_RING_TAG_LEN`, `LOG_RING_MSG_LEN`
+- `include/logger.h` — `LogEntry` struct, ring buffer declarations
+- `src/logger.cpp` — `appendToRing()`, `getLogCount()`, `getLogAt()`, `getLatestSequence()`
+- `src/web_server.cpp` — `/api/logs` endpoint (line 327)
+- `data/www/script.js` — `pollLogs()`, `appendLogDOM()`, `filterLogs()`, `clearLogDisplay()`
+
+### Log Flow
+```
+Serial.printf/dualLog() → Serial + Syslog + Telnet + Ring Buffer
+                                                        ↓
+                                              /api/logs?since=N
+                                                        ↓
+                                              Web UI System Log tab
+```
+
+## Performance Metrics Overlay (v1.6.0)
+
+Floating overlay toggled via gear button (bottom-right corner), shows context-aware metrics:
+- **Dashboard tab**: API response time (ms), graph render time (ms), free heap (KB)
+- **PID tab**: Animation FPS, frame time (ms), free heap (KB)
+- **System Log tab**: Free heap (KB)
+
+### Performance Fixes Applied
+1. **Canvas dimension caching**: `setupCanvas()` results cached, only re-measured on tab switch/resize (was calling `getBoundingClientRect()` 5x/frame = ~90 calls/sec)
+2. **Visibility gating**: `drawGraph()` skips when Dashboard tab hidden, PID animation only runs on PID tab
+3. **Throttled PID animation**: ~18 FPS via `PID_FRAME_MS` constant
+
 ## Debug/Testing Features
 
 The web interface includes a collapsible Debug/Testing panel with tools for hardware testing and troubleshooting.
@@ -778,7 +827,9 @@ MAX31865 is read every 100ms via SPI in `max31865.cpp`:
 Web files are embedded in firmware via PROGMEM (see `include/web_content.h`):
 - **No filesystem required** - HTML/CSS/JS compiled into flash
 - Source files in `data/www/` are for editing; `web_content.h` is generated from them
-- After editing web files, regenerate `web_content.h` (raw string literals wrapping each file)
+- After editing web files, regenerate with: `python scripts/generate_web_content.py`
+  - HTML → raw C string literal, CSS/JS → gzip level 9 → C byte arrays (16 hex/line)
+  - Prints size summary (original vs gzipped)
 - Frontend polls `/api/status` every 2 seconds
 - JS uses FormData for POST requests (matches ESPAsyncWebServer's body param parsing)
 - **Important**: The board's partition table has `ffat` (FAT) partition type, not `spiffs`. LittleFS/SPIFFS filesystem uploads via OTA will silently fail. Use PROGMEM embedding instead.
@@ -808,6 +859,11 @@ MQTT broker connection uses username/password authentication:
 - ✅ PID Visualization page — interactive Canvas-based block diagram, terms bar, auger gauge, time-series chart (v1.4.0)
 - ✅ HA PID Analysis dashboard view — apexcharts, mushroom cards, iframe embed (v1.4.0)
 - ✅ Tab-based web UI — Dashboard + PID Visualizer tabs (v1.4.0)
+- ✅ Button renames — Stop→End Cook, Shutdown→Emergency Stop across web/TM1638/MQTT (v1.6.0)
+- ✅ System Log viewer — ring buffer (64 entries), /api/logs endpoint, web UI tab with filtering (v1.6.0)
+- ✅ Performance metrics overlay — API latency, frame timing, heap monitoring (v1.6.0)
+- ✅ web_content.h generation script — `scripts/generate_web_content.py` (v1.6.0)
+- ✅ Canvas performance fixes — dimension caching, visibility gating (v1.6.0)
 
 ### Not Yet Implemented
 - Full persistent configuration storage (PID integral persists, but other settings reset on reboot)
@@ -818,7 +874,8 @@ MQTT broker connection uses username/password authentication:
 - PID integral term persists across reboots (NVS); other settings reset on reboot
 - Single temperature probe only (user uses ChefIQ for meat tracking)
 - Manual WiFi configuration (no captive portal)
-- Web UI has 2-tab interface: Dashboard (main controls/chart) and PID Visualizer (animated diagrams)
+- Web UI has 3-tab interface: Dashboard (main controls/chart), PID Visualizer (animated diagrams), and System Log (real-time log viewer)
+- Performance overlay toggled via gear button (bottom-right) shows API latency, frame times, heap usage
 
 ## Testing Checklist
 
