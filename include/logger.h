@@ -16,6 +16,16 @@
 #define LOG_INFO    6  // Informational messages
 #define LOG_DEBUG   7  // Debug-level messages
 
+#if ENABLE_LOG_RING
+struct LogEntry {
+  uint32_t timestamp;               // millis() / 1000 (uptime seconds)
+  uint32_t sequence;                // monotonic counter for incremental polling
+  uint8_t  priority;                // RFC 5424 severity (0-7)
+  char     tag[LOG_RING_TAG_LEN];   // e.g., "STATE", "PID", "WIFI"
+  char     message[LOG_RING_MSG_LEN]; // truncated log message
+};
+#endif
+
 class Logger {
 public:
   Logger();
@@ -24,13 +34,29 @@ public:
   void logf(uint16_t priority, const char* format, ...);
   bool isConnected();
 
-  // Dual logging - outputs to both Serial and Syslog
+  // Dual logging - outputs to Serial, Syslog, Telnet, and ring buffer
   void dualLog(uint16_t priority, const char* format, ...);
+
+#if ENABLE_LOG_RING
+  // Ring buffer access for web API
+  uint8_t getLogCount();
+  const LogEntry& getLogAt(uint8_t index);  // 0 = oldest
+  uint32_t getLatestSequence();
+#endif
 
 private:
   WiFiUDP* _udpClient;
   Syslog* _syslog;
   bool _initialized;
+
+#if ENABLE_LOG_RING
+  LogEntry _logRing[LOG_RING_SIZE];
+  uint8_t  _logHead;
+  uint8_t  _logCount;
+  uint32_t _logSequence;
+
+  void appendToRing(uint8_t priority, const char* formatted);
+#endif
 };
 
 // Global logger instance

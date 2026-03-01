@@ -2,6 +2,7 @@
 #include "config.h"
 #include "web_content.h"
 #include "http_ota.h"
+#include "logger.h"
 
 WebServer::WebServer(TemperatureController* controller, uint16_t port)
     : _server(port), _controller(controller), _port(port), _running(false) {}
@@ -318,6 +319,46 @@ void WebServer::setupRoutes() {
     request->send(200, "application/json",
                   "{\"ok\":true,\"message\":\"Update starting, device will reboot\"}");
   });
+
+  // API: System log entries (ring buffer)
+  // GET /api/logs          - All entries
+  // GET /api/logs?since=42 - Only entries with sequence > 42
+#if ENABLE_LOG_RING
+  _server.on("/api/logs", HTTP_GET, [](AsyncWebServerRequest* request) {
+    uint32_t since = 0;
+    if (request->hasParam("since")) {
+      since = request->getParam("since")->value().toInt();
+    }
+
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    response->print("{\"logs\":[");
+
+    uint8_t count = logger.getLogCount();
+    bool first = true;
+    for (uint8_t i = 0; i < count; i++) {
+      const LogEntry& entry = logger.getLogAt(i);
+      if (entry.sequence <= since) continue;
+
+      if (!first) response->print(',');
+      first = false;
+
+      // Compact: [sequence, timestamp, priority, "tag", "message"]
+      response->printf("[%u,%u,%u,\"%s\",\"",
+                       entry.sequence, entry.timestamp, entry.priority, entry.tag);
+      // Escape message for JSON
+      for (const char* p = entry.message; *p; p++) {
+        if (*p == '"') response->print("\\\"");
+        else if (*p == '\\') response->print("\\\\");
+        else if (*p == '\n') response->print("\\n");
+        else if (*p == '\r') { /* skip */ }
+        else response->write(*p);
+      }
+      response->print("\"]");
+    }
+    response->print("]}");
+    request->send(response);
+  });
+#endif
 
   // 404 handler
   _server.onNotFound([](AsyncWebServerRequest* request) {

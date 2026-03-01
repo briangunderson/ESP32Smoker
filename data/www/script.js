@@ -12,17 +12,33 @@ let localAtFetch = 0;    // Date.now() when history was fetched
 let graphInited = false;
 let graphRangeSec = 14400; // 0 = all data
 
+// System Log
+var logEntries = [];
+var logLastSeq = 0;
+var logPollTimer = null;
+var LOG_POLL_MS = 3000;
+var LOG_MAX_DISPLAY = 500;
+
+// Performance metrics
+var perfStats = { fps: 0, frameMs: 0, apiMs: 0, graphMs: 0, pidDrawMs: 0 };
+var perfVisible = false;
+var perfFpsFrames = 0;
+var perfFpsLast = 0;
+
 // --- Init ---
 document.addEventListener('DOMContentLoaded', function() {
   fetchHistory();
   updateStatus();
   setInterval(updateStatus, POLL_MS);
   window.addEventListener('resize', function() {
+    canvasCacheDirty = true;
     drawGraph();
-    if (document.getElementById('tab-pid') && document.getElementById('tab-pid').classList.contains('active')) {
+    if (document.getElementById('tab-pid') && document.getElementById('tab-pid').style.display !== 'none') {
       drawPidChart();
     }
+    canvasCacheDirty = false;
   });
+  setInterval(updatePerfDisplay, 1000);
   checkVersionStatus();
 });
 
@@ -57,9 +73,11 @@ async function post(endpoint, params) {
 // --- Status Polling ---
 async function updateStatus() {
   try {
+    var _apiT0 = performance.now();
     var r = await fetch(API + '/status');
     if (!r.ok) throw new Error(r.status);
     var s = await r.json();
+    perfStats.apiMs = (performance.now() - _apiT0).toFixed(0);
     apiOk = true;
     updateUI(s);
   } catch (e) {
@@ -152,6 +170,9 @@ function updateUI(s) {
     spInput.value = sp.toFixed(0);
   }
 
+  // Performance heap tracking
+  perfStats.heapKB = Math.round(s.heap / 1024);
+
   // Record PID data and update PID scene state
   recordPidSample(s);
   updatePidVisuals(s);
@@ -227,6 +248,9 @@ function getVisibleData() {
 }
 
 function drawGraph() {
+  var dashEl = document.getElementById('tab-dashboard');
+  if (dashEl && dashEl.style.display === 'none') return;
+  var _graphT0 = performance.now();
   var canvas = document.getElementById('temp-graph');
   if (!canvas) return;
   var dpr = window.devicePixelRatio || 1;
@@ -385,6 +409,7 @@ function drawGraph() {
       ctx.fillText(last.c.toFixed(0) + '\u00B0', lx + 4, ly + 4);
     }
   }
+  perfStats.graphMs = (performance.now() - _graphT0).toFixed(1);
 }
 
 function hexAlpha(hex, a) {
@@ -600,27 +625,45 @@ function updateFastOtaBtn(active) {
 
 // --- Tab System ---
 function switchTab(tab) {
+  // Deactivate all tabs
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
-  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+  ['tab-dashboard', 'tab-pid', 'tab-logs'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+
+  // Activate selected tab
+  var btns = document.querySelectorAll('.tab-btn');
+  var tabMap = { dashboard: 0, pid: 1, logs: 2 };
+  if (btns[tabMap[tab]]) btns[tabMap[tab]].classList.add('active');
+
+  var panel = document.getElementById('tab-' + tab);
+  if (panel) panel.style.display = 'block';
+
+  // Tab lifecycle
   if (tab === 'pid') {
-    document.querySelectorAll('.tab-btn')[1].classList.add('active');
-    var el = document.getElementById('tab-pid');
-    el.style.display = 'block';
-    el.classList.add('active');
-    document.getElementById('tab-dashboard').classList.remove('active');
-    document.getElementById('tab-dashboard').style.display = 'none';
     startPidAnim();
     requestAnimationFrame(function() { drawPidChart(); });
   } else {
-    document.querySelectorAll('.tab-btn')[0].classList.add('active');
-    var el = document.getElementById('tab-dashboard');
-    el.style.display = 'block';
-    el.classList.add('active');
-    document.getElementById('tab-pid').classList.remove('active');
-    document.getElementById('tab-pid').style.display = 'none';
     stopPidAnim();
+  }
+  if (tab === 'dashboard') {
+    canvasCacheDirty = true;
     requestAnimationFrame(drawGraph);
   }
+  if (tab === 'logs') {
+    if (!logPollTimer) {
+      pollLogs();
+      logPollTimer = setInterval(pollLogs, LOG_POLL_MS);
+    }
+  } else {
+    if (logPollTimer) {
+      clearInterval(logPollTimer);
+      logPollTimer = null;
+    }
+  }
+
+  updatePerfDisplay();
 }
 
 // =============================================================================
@@ -738,18 +781,32 @@ function updateParticles(dt) {
   }
 }
 
-// --- DPR-Aware Canvas Helper ---
+// --- DPR-Aware Canvas Helper (with dimension cache) ---
+var canvasCache = {};
+var canvasCacheDirty = true;
+
 function setupCanvas(id) {
-  var canvas = document.getElementById(id);
-  if (!canvas) return null;
+  var c = document.getElementById(id);
+  if (!c) return null;
+  var ctx = c.getContext('2d');
   var dpr = window.devicePixelRatio || 1;
-  var rect = canvas.getBoundingClientRect();
-  var W = rect.width, H = rect.height;
+
+  if (!canvasCacheDirty && canvasCache[id]) {
+    // Use cached dimensions, just clear
+    var cc = canvasCache[id];
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.scale(dpr, dpr);
+    return { ctx: ctx, W: cc.W, H: cc.H };
+  }
+
+  var r = c.getBoundingClientRect();
+  var W = r.width, H = r.height;
   if (W === 0 || H === 0) return null;
-  canvas.width = W * dpr;
-  canvas.height = H * dpr;
-  var ctx = canvas.getContext('2d');
+  c.width = W * dpr;
+  c.height = H * dpr;
   ctx.scale(dpr, dpr);
+  canvasCache[id] = { W: W, H: H };
   return { ctx: ctx, W: W, H: H };
 }
 
@@ -787,16 +844,24 @@ function pidAnimLoop(ts) {
     return;
   }
   pidLastFrame = ts;
+  perfFpsFrames++;
+  if (ts - perfFpsLast >= 1000) {
+    perfStats.fps = perfFpsFrames;
+    perfFpsFrames = 0;
+    perfFpsLast = ts;
+  }
   var dt = PID_FRAME_MS / 1000;
 
   updateParticles(dt);
 
   // Draw each canvas
+  var _pidT0 = performance.now();
   drawSmokerScene(ts);
   drawPidSpring(ts);
   drawPidBucket(ts);
   drawPidSpeedo(ts);
   drawFeedbackLoop(ts);
+  perfStats.pidDrawMs = (performance.now() - _pidT0).toFixed(1);
 
   pidAnimId = requestAnimationFrame(pidAnimLoop);
 }
@@ -2000,4 +2065,127 @@ function drawPidChart() {
   }
   ctx.stroke();
   ctx.globalAlpha = 1;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// SYSTEM LOG
+// ════════════════════════════════════════════════════════════════════════
+
+var PRIORITY_NAMES = ['EMERG','ALERT','CRIT','ERR','WARN','NOTICE','INFO','DEBUG'];
+var PRIORITY_CLASSES = ['log-crit','log-crit','log-crit','log-err','log-warn','log-info','log-info','log-debug'];
+
+function formatUptime(seconds) {
+  var h = Math.floor(seconds / 3600);
+  var m = Math.floor((seconds % 3600) / 60);
+  var s = seconds % 60;
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function appendLogDOM(container, entry) {
+  var div = document.createElement('div');
+  div.className = 'log-entry ' + (PRIORITY_CLASSES[entry.pri] || 'log-info');
+  div.innerHTML = '<span class="log-time">' + formatUptime(entry.time) + '</span>' +
+    '<span class="log-tag">[' + escapeHtml(entry.tag) + ']</span>' +
+    '<span class="log-msg">' + escapeHtml(entry.msg) + '</span>';
+  container.appendChild(div);
+}
+
+async function pollLogs() {
+  try {
+    var url = API + '/logs';
+    if (logLastSeq > 0) url += '?since=' + logLastSeq;
+    var r = await fetch(url);
+    if (!r.ok) return;
+    var d = await r.json();
+    if (!d.logs || d.logs.length === 0) return;
+
+    var container = document.getElementById('log-container');
+    var autoScroll = document.getElementById('log-autoscroll').checked;
+    var filterLevel = parseInt(document.getElementById('log-level-filter').value);
+
+    for (var i = 0; i < d.logs.length; i++) {
+      var e = d.logs[i];
+      var entry = { seq: e[0], time: e[1], pri: e[2], tag: e[3], msg: e[4] };
+      logEntries.push(entry);
+      logLastSeq = entry.seq;
+      if (entry.pri <= filterLevel) {
+        appendLogDOM(container, entry);
+      }
+    }
+
+    // Trim old DOM entries
+    while (container.children.length > LOG_MAX_DISPLAY) {
+      container.removeChild(container.firstChild);
+    }
+
+    if (autoScroll) {
+      container.scrollTop = container.scrollHeight;
+    }
+
+    document.getElementById('log-count').textContent = logEntries.length + ' entries';
+  } catch (e) {
+    // silently ignore fetch errors
+  }
+}
+
+function filterLogs() {
+  var container = document.getElementById('log-container');
+  container.innerHTML = '';
+  var filterLevel = parseInt(document.getElementById('log-level-filter').value);
+  for (var i = 0; i < logEntries.length; i++) {
+    if (logEntries[i].pri <= filterLevel) {
+      appendLogDOM(container, logEntries[i]);
+    }
+  }
+  while (container.children.length > LOG_MAX_DISPLAY) {
+    container.removeChild(container.firstChild);
+  }
+}
+
+function clearLogDisplay() {
+  logEntries = [];
+  document.getElementById('log-container').innerHTML = '';
+  document.getElementById('log-count').textContent = '0 entries';
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// PERFORMANCE OVERLAY
+// ════════════════════════════════════════════════════════════════════════
+
+function togglePerf() {
+  perfVisible = !perfVisible;
+  document.getElementById('perf-overlay').classList.toggle('hidden', !perfVisible);
+  if (perfVisible) updatePerfDisplay();
+}
+
+function updatePerfDisplay() {
+  if (!perfVisible) return;
+  var el = document.getElementById('perf-content');
+  if (!el) return;
+
+  var pidActive = false;
+  var pidEl = document.getElementById('tab-pid');
+  if (pidEl && pidEl.style.display !== 'none') pidActive = true;
+
+  var dashActive = false;
+  var dashEl = document.getElementById('tab-dashboard');
+  if (dashEl && dashEl.style.display !== 'none') dashActive = true;
+
+  var tab = pidActive ? 'PID' : (dashActive ? 'Dashboard' : 'Logs');
+  var lines = [
+    'Tab: ' + tab,
+    'API: ' + perfStats.apiMs + 'ms',
+    'Heap: ' + (perfStats.heapKB || '?') + 'KB'
+  ];
+  if (pidActive) {
+    lines.push('FPS: ' + perfStats.fps);
+    lines.push('Frame: ' + perfStats.pidDrawMs + 'ms');
+  } else if (dashActive) {
+    lines.push('Graph: ' + perfStats.graphMs + 'ms');
+  }
+  el.innerHTML = lines.join('<br>');
 }

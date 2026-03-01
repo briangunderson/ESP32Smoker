@@ -210,6 +210,12 @@
 #define ENABLE_TUI           false                   // Enable TUI telnet server (DISABLED - debugging)
 #define TUI_PORT             2323                    // TUI telnet port
 
+// Log Ring Buffer for Web UI (system log viewer)
+#define ENABLE_LOG_RING          true
+#define LOG_RING_SIZE            64                   // Number of log entries to keep
+#define LOG_RING_TAG_LEN         12                   // Max tag length (incl null)
+#define LOG_RING_MSG_LEN         80                   // Max message length (incl null)
+
 // MAX31865 Verbose Debugging (logs every sensor read with resistance values)
 #define ENABLE_MAX31865_VERBOSE  false               // Disable to reduce Serial load
 

@@ -26,7 +26,7 @@ TM1638Display* display = nullptr;
 TUIServer* tuiServer = nullptr;
 Encoder* encoder = nullptr;
 
-// Helper function to log to both Serial and Syslog
+// Helper function to log to Serial, Syslog, Telnet, and web ring buffer
 void logMessage(uint16_t priority, const char* tag, const char* format, ...) {
   char buffer[LOG_BUFFER_SIZE];
   va_list args;
@@ -36,15 +36,8 @@ void logMessage(uint16_t priority, const char* tag, const char* format, ...) {
   vsnprintf(buffer, LOG_BUFFER_SIZE, format, args);
   va_end(args);
 
-  // Print to Serial
-  if (ENABLE_SERIAL_DEBUG) {
-    Serial.printf("[%s] %s\n", tag, buffer);
-  }
-
-  // Send to Syslog
-  char syslogMsg[LOG_BUFFER_SIZE];
-  snprintf(syslogMsg, LOG_BUFFER_SIZE, "[%s] %s", tag, buffer);
-  logger.log(priority, syslogMsg);
+  // Use dualLog which handles Serial + Syslog + Telnet + Ring Buffer
+  logger.dualLog(priority, "[%s] %s\n", tag, buffer);
 }
 
 // Network configuration

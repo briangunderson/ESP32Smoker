@@ -24,6 +24,7 @@
         <nav class="tab-bar">
             <button class="tab-btn active" onclick="switchTab('dashboard')">Dashboard</button>
             <button class="tab-btn" onclick="switchTab('pid')">PID Visualizer</button>
+            <button class="tab-btn" onclick="switchTab('logs')">System Log</button>
         </nav>
 
         <main id="tab-dashboard" class="tab-panel active">
@@ -223,11 +224,41 @@
             </section>
         </div>
 
+        <div id="tab-logs" class="tab-panel" style="display:none;">
+            <section class="card log-card">
+                <div class="log-header">
+                    <h3>System Log</h3>
+                    <div class="log-controls">
+                        <select id="log-level-filter" onchange="filterLogs()">
+                            <option value="7">All</option>
+                            <option value="6" selected>Info+</option>
+                            <option value="4">Warning+</option>
+                            <option value="3">Error+</option>
+                        </select>
+                        <label class="log-auto">
+                            <input type="checkbox" id="log-autoscroll" checked> Auto-scroll
+                        </label>
+                        <button class="btn btn-debug" onclick="clearLogDisplay()">Clear</button>
+                    </div>
+                </div>
+                <div id="log-container" class="log-container"></div>
+                <div class="log-footer">
+                    <span id="log-count">0 entries</span>
+                </div>
+            </section>
+        </div>
+
         <footer>GunderGrill <span id="fw-footer-version">v1.2.0</span></footer>
     </div>
 
     <!-- Toast container -->
     <div id="toasts"></div>
+
+    <div id="perf-overlay" class="perf-overlay hidden">
+        <div class="perf-title">Performance</div>
+        <div id="perf-content"></div>
+    </div>
+    <button class="perf-toggle" onclick="togglePerf()" title="Performance metrics">&#9881;</button>
 
     <script src="script.js"></script>
 </body>
